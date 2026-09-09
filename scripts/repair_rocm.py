@@ -50,16 +50,32 @@ def step(text):
 
 
 def works(overrides, timeout=180):
-    """Does the GPU enumerate *and* compute under these settings?"""
-    code, out, _ = run_case(COUNT_SRC, overrides, timeout)
+    """
+    Does the GPU enumerate *and* compute under these settings?
+
+    Returns (ok, summary, detail). A non-zero exit that is not a Windows crash
+    code means Python raised and printed a traceback -- which is the most
+    informative failure of the lot, so it is kept rather than reduced to
+    "exited 1".
+    """
+    code, out, err = run_case(COUNT_SRC, overrides, timeout)
     if code != 0 or out.strip() in ('', '0'):
-        return False, (describe_exit(code).splitlines()[0] if code not in (0, None)
-                       else f"{out or '0'} devices")
+        if code in (0, None):
+            return False, f"{out or '0'} devices", err
+        return False, describe_exit(code).splitlines()[0], err
     code, out, err = run_case(WORK_SRC, overrides, timeout)
     if code != 0:
-        return False, (describe_exit(code).splitlines()[0] if code is not None
-                       else 'timed out')
-    return True, out.strip()
+        summary = (describe_exit(code).splitlines()[0] if code is not None
+                   else 'timed out')
+        return False, summary, err
+    return True, out.strip(), ""
+
+
+def show_detail(detail):
+    """Print the tail of a child's stderr, which is where the reason is."""
+    lines = [l for l in (detail or "").splitlines() if l.strip()]
+    for line in lines[-8:]:
+        print(f"        {line}")
 
 
 def persist(overrides):
@@ -169,18 +185,19 @@ def install_build(version, dry_run):
 
 def try_all(label, timeout):
     """Baseline, then the sweep. Returns the winning overrides or None."""
-    ok, detail = works({}, timeout)
+    ok, summary, detail = works({}, timeout)
     if ok:
-        print(f"    {label}: WORKS -- {detail}")
+        print(f"    {label}: WORKS -- {summary}")
         return {}
-    print(f"    {label}: {detail}")
+    print(f"    {label}: {summary}")
+    show_detail(detail)
     for number, (overrides, name) in enumerate(SWEEP, 1):
         if not overrides:
             continue
         print(f"      trying {name} ({number}/{len(SWEEP)}) ...")
-        ok, detail = works(overrides, timeout)
+        ok, summary, detail = works(overrides, timeout)
         if ok:
-            print(f"    {label} + {name}: WORKS -- {detail}")
+            print(f"    {label} + {name}: WORKS -- {summary}")
             return overrides
     print(f"    {label}: no environment setting helped")
     return None
@@ -207,6 +224,13 @@ def main():
     for key in SWEEP_KEYS:
         if key in os.environ:
             print(f"note:   ignoring inherited {key}={os.environ.pop(key)}")
+
+    step("0/5  Machine")
+    try:
+        from gpu_probe import report_environment
+        report_environment()
+    except Exception as exc:
+        print(f"    could not gather versions: {type(exc).__name__}: {exc}")
 
     step("1/5  Testing what is installed")
     winner = try_all("as installed", args.timeout)
