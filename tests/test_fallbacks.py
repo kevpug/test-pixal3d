@@ -935,6 +935,47 @@ def _raises(call, exception):
     return False
 
 
+# ------------------------------------------------------- empty subdivision --
+
+def test_subdivision_diagnostic(device):
+    """An empty subdivision must explain itself, not fail three frames later.
+
+    The decoder keeps a voxel only where to_subdiv predicts a positive logit.
+    If none is positive the sparse tensor goes empty and the next convolution
+    dies inside max() on a zero-length dimension, with nothing in the
+    traceback pointing at the cause. NaN logits land here too, since NaN > 0
+    is false -- and that is a different problem needing a different fix, so
+    the message has to tell them apart.
+    """
+    section("Empty-subdivision diagnostic")
+
+    from pixal3d.models.sc_vaes.sparse_unet_vae import _no_subdivision_error
+
+    class Fake:
+        def __init__(self, feats, voxels=100):
+            self.feats = feats
+            self.coords = torch.zeros(voxels, 4, dtype=torch.long, device=device)
+
+    features = torch.randn(100, 64, device=device)
+
+    logits = torch.full((100, 8), float('nan'), device=device)
+    logits[:20] = -1.0
+    message = str(_no_subdivision_error(Fake(logits), Fake(features)))
+    check("names the overflow when logits are NaN",
+          'NaN' in message and 'bfloat16' in message)
+    check("reports how many values are bad", '640 of 800' in message)
+
+    logits = -torch.rand(100, 8, device=device) - 0.1
+    message = str(_no_subdivision_error(Fake(logits), Fake(features)))
+    check("rules overflow out when logits are finite",
+          'not an overflow' in message and 'fallback operator' in message)
+    check("does not blame dtype when the logits are finite",
+          'NaN or Inf, and NaN > 0' not in message)
+
+    both = str(_no_subdivision_error(Fake(logits), Fake(features)))
+    check("always reports the voxel count", 'input voxels: 100' in both)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--device', default=None, help="cuda or cpu (default: cuda when available)")
@@ -948,7 +989,7 @@ def main():
     for test in (test_hashgrid, test_grid_sample, test_uv_rasterize, test_dual_grid,
                  test_attention, test_sparse_conv, test_runtime, test_cfg_batch,
                  test_accelerator_probe, test_fast_init, test_rembg, test_natten,
-                 test_model_stack,
+                 test_subdivision_diagnostic, test_model_stack,
                  test_glb_export):
         test(device)
 

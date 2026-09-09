@@ -157,6 +157,8 @@ class SparseResBlockUpsample3d(nn.Module):
         h = x.replace(self.norm1(x.feats))
         h = h.replace(F.silu(h.feats))
         subdiv_binarized = subdiv.replace(subdiv.feats > 0) if subdiv is not None else None
+        if subdiv_binarized is not None and not bool(subdiv_binarized.feats.any()):
+            raise _no_subdivision_error(subdiv, x)
         h = self.updown(h, subdiv_binarized)
         x = self.updown(x, subdiv_binarized)
         h = self.conv1(h)
@@ -212,6 +214,64 @@ class SparseResBlockS2C3d(nn.Module):
             return torch.utils.checkpoint.checkpoint(self._forward, x, use_reentrant=False)
         else:
             return self._forward(x)
+
+
+def _describe(name: str, tensor: torch.Tensor) -> str:
+    """One line about a tensor's health, for the diagnostic below."""
+    total = tensor.numel()
+    if total == 0:
+        return f"    {name}: empty"
+    finite = torch.isfinite(tensor)
+    bad = total - int(finite.sum())
+    values = tensor[finite].float()
+    if values.numel() == 0:
+        return f"    {name}: {tensor.dtype}, all {total} values are NaN or Inf"
+    detail = (f"    {name}: {tensor.dtype}, "
+              f"min {values.min():.4g}, max {values.max():.4g}, "
+              f"mean {values.mean():.4g}")
+    if bad:
+        detail += f", {bad} of {total} NaN or Inf"
+    return detail
+
+
+def _no_subdivision_error(subdiv: sp.SparseTensor, x: sp.SparseTensor) -> RuntimeError:
+    """Explain an empty subdivision instead of letting it fail further down.
+
+    Every voxel is kept only where ``to_subdiv`` predicts a positive logit. If
+    none is positive the sparse tensor becomes empty and the next convolution
+    dies in ``max()`` on a zero-length dimension, far from the cause. Note that
+    a NaN logit compares false too, so overflow lands here as well.
+    """
+    logits = subdiv.feats
+    bad = int((~torch.isfinite(logits)).sum())
+    lines = [
+        "The shape decoder subdivided nothing: no voxel had a positive "
+        "subdivision logit, so the sparse tensor is now empty.",
+        f"    input voxels: {x.coords.shape[0]}",
+        _describe("subdivision logits", logits),
+        _describe("input features", x.feats),
+    ]
+    if bad:
+        lines += [
+            "",
+            "The logits contain NaN or Inf, and NaN > 0 is false, which is why "
+            "nothing was selected. The flow models are trained in bfloat16; "
+            "float16 has the same precision but a far smaller exponent range, "
+            "so converting them can overflow.",
+            "Re-run with --dtype bfloat16 (slower on this GPU, but the range "
+            "the checkpoints expect), or --dtype float32.",
+        ]
+    else:
+        lines += [
+            "",
+            "The logits are finite but all non-positive, so this is not an "
+            "overflow. Either the latents feeding the decoder are wrong or a "
+            "fallback operator is returning wrong values.",
+            "Compare against the reference path with "
+            "PIXAL3D_FORCE_FALLBACK=1 python tests/test_fallbacks.py, and try "
+            "--dtype bfloat16 to rule the conversion out.",
+        ]
+    return RuntimeError("\n".join(lines))
 
 
 class SparseResBlockC2S3d(nn.Module):
