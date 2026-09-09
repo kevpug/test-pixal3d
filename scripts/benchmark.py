@@ -98,7 +98,7 @@ def bench_attention(device, tokens, iters):
     Self-attention over a sparse-stage-sized sequence: 12 heads x 128 channels.
 
     Also times the query-chunked wrapper, which trades a little arithmetic for a
-    much smaller score matrix — the whole point when there is no fused kernel.
+    much smaller score matrix - the whole point when there is no fused kernel.
     """
     from pixal3d.compat.attention import chunked_sdpa, query_chunk_size
 
@@ -174,7 +174,7 @@ def main():
     device = runtime.get_device()
     print(runtime.describe())
     if device == 'cpu':
-        print("No GPU detected — these numbers say nothing about your card.")
+        print("No GPU detected - these numbers say nothing about your card.")
     iters = 3 if args.quick else args.iters
 
     if 'gemm' not in args.skip:

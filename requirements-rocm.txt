@@ -21,7 +21,21 @@ kornia==0.8.2
 einops
 
 # --- Camera estimation (MoGe-2). Needs git on PATH. ---
-git+https://github.com/microsoft/MoGe.git
+#
+# MoGe itself is NOT installed here: `pip install moge` drags in flex-gemm
+# (CUDA/Triton, cannot build on Windows ROCm), opencv-python (fights the
+# headless build below, same cv2 package), gradio>=6 and another git package.
+# We use exactly one class from it, MoGeModel from moge.model.v2, whose whole
+# import graph is torch, numpy, huggingface_hub and utils3d_moge. So setup
+# installs it with --no-deps:
+#
+#   pip install --no-deps git+https://github.com/microsoft/MoGe.git@74fbce054ebed49800de42d0ad0e83495065719a
+#
+# utils3d_moge is MoGe's fork of utils3d and IS a real dependency. It has a
+# different distribution name on purpose: Pixal3D pins utils3d 0.0.2, which
+# exposes utils3d.torch, while MoGe calls utils3d.pt. Installing both under
+# the name "utils3d" would break one of them.
+utils3d_moge @ git+https://github.com/EasternJournalist/utils3d-moge.git@62f09d58509485564e24d5d9f6aac9ee9ebc0c37
 
 # --- Geometry and I/O ---
 trimesh==4.10.1

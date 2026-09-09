@@ -318,7 +318,7 @@ def run_inference(
                                conv_backend=conv_backend, cfg_batch=cfg_batch)
     device = runtime.get_device()
     if device == 'cpu':
-        print("[WARN] No GPU detected — this will be extremely slow. "
+        print("[WARN] No GPU detected - this will be extremely slow. "
               "Run scripts/check_env.py to diagnose the install.")
 
     low_vram = preset.low_vram if low_vram is None else low_vram

@@ -213,7 +213,7 @@ def run_inference(
                                conv_backend=conv_backend, cfg_batch=cfg_batch)
     device = runtime.get_device()
     if device == 'cpu':
-        print("[WARN] No GPU detected — this will be extremely slow. "
+        print("[WARN] No GPU detected - this will be extremely slow. "
               "Run scripts/check_env.py to diagnose the install.")
 
     # Explicit arguments win over the preset; the preset fills in the rest.
@@ -233,7 +233,7 @@ def run_inference(
                                  block_offload=block_offload)
         runtime.apply_dtype(pipeline, torch_dtype)
 
-    # Preprocess image first — rembg loads to GPU for this call, then offloads.
+    # Preprocess image first - rembg loads to GPU for this call, then offloads.
     # MoGe is loaded afterwards so both never occupy VRAM at the same time.
     print(f"[Inference] Processing image: {image_path}")
     img = Image.open(image_path)
@@ -255,7 +255,7 @@ def run_inference(
             mesh_scale, image_resolution
         )["distance_from_x"]
         camera_params = {'camera_angle_x': camera_angle_x, 'distance': distance, 'mesh_scale': mesh_scale}
-        print(f"[Inference] Using manual FOV: {math.degrees(manual_fov):.2f}° ({manual_fov:.4f} rad), distance={distance:.4f}")
+        print(f"[Inference] Using manual FOV: {math.degrees(manual_fov):.2f} deg ({manual_fov:.4f} rad), distance={distance:.4f}")
     else:
         print("[MoGe-2] Loading model for camera estimation...")
         with profiling.stage('camera: MoGe-2'):
@@ -308,7 +308,7 @@ def run_inference(
     mesh = mesh_list[0]
 
     # Free the sampling-stage weights before the export stage allocates its
-    # texture buffers — on a 12 GB card the two do not fit together.
+    # texture buffers - on a 12 GB card the two do not fit together.
     del mesh_list
     runtime.free_memory()
 

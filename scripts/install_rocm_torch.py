@@ -2,7 +2,7 @@
 Install AMD's ROCm build of PyTorch for a specific GPU family.
 
 AMD's *released* Windows PyTorch wheels only cover RDNA3 and RDNA4. RDNA2 cards
-— the RX 6000 series, gfx103x — are built by the same CI but published only to
+- the RX 6000 series, gfx103x - are built by the same CI but published only to
 the nightly index, so they have to be installed by hand from there. This script
 resolves a self-consistent set (the ROCm SDK and torch must come from the same
 build date) and installs it.
@@ -74,7 +74,7 @@ def find_torch_builds(index: str, tag: str, plat: str) -> List[Tuple[str, str, s
 
     The index carries several torch versions per ROCm build, including
     prereleases. Sorting puts the newest ROCm build last and, within it,
-    prefers a released torch over an ``a0`` — the surrounding ecosystem
+    prefers a released torch over an ``a0`` - the surrounding ecosystem
     (transformers, diffusers, trimesh) is only tested against releases.
     """
     pattern = re.compile(
@@ -223,7 +223,7 @@ def main() -> int:
     print()
     if args.dry_run or cross:
         if cross and not args.dry_run:
-            print("(resolved for another machine — not installing)")
+            print("(resolved for another machine - not installing)")
         print(' '.join(cmd))
         return 0
 

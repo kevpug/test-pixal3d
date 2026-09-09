@@ -1,7 +1,7 @@
 """
 Environment doctor for the ROCm / Windows port.
 
-Run this first when something does not work — it reports what torch was built
+Run this first when something does not work - it reports what torch was built
 against, whether the GPU is actually visible, which backends will be selected,
 and whether the CPU packages the GLB fallback needs are installed. Finally it
 runs a short GPU self-test that exercises the exact code paths a generation
@@ -109,7 +109,7 @@ def check_backends():
         if info[name]:
             print(f"{OK} {name} available ({why})")
         else:
-            print(f"{WARN} {name} missing — using the pure-PyTorch fallback ({why})")
+            print(f"{WARN} {name} missing - using the pure-PyTorch fallback ({why})")
     return info
 
 
@@ -120,13 +120,12 @@ def check_fallback_deps():
     missing = mesh_ops.missing_dependencies()
     for pkg in ('trimesh', 'xatlas', 'fast-simplification'):
         if pkg in missing:
-            print(f"{BAD} {pkg} missing — GLB export will fail")
+            print(f"{BAD} {pkg} missing - GLB export will fail")
         else:
             print(f"{OK} {pkg}")
-    # Import name -> what to pass to pip, which differs for two of these.
+    # Import name -> what to pass to pip, which differs for one of these.
     for mod, pkg in (('cv2', 'opencv-python-headless'),
-                     ('transformers', 'transformers'),
-                     ('moge', 'git+https://github.com/microsoft/MoGe.git')):
+                     ('transformers', 'transformers')):
         try:
             __import__(mod)
             print(f"{OK} {mod}")
@@ -136,6 +135,17 @@ def check_fallback_deps():
     if missing:
         print()
         print("         pip install " + " ".join(missing))
+
+    # MoGe is optional and installs differently, so it is reported separately:
+    # it only estimates the camera FOV, which --fov supplies by hand, and its
+    # declared dependencies include flex-gemm, which cannot build here.
+    try:
+        __import__('moge')
+        print(f"{OK} moge (camera FOV estimation)")
+    except ImportError:
+        print(f"{WARN} moge missing - FOV must be passed with --fov")
+        print("         pip install --no-deps \\")
+        print("           git+https://github.com/microsoft/MoGe.git@74fbce054ebed49800de42d0ad0e83495065719a")
     return missing
 
 
@@ -184,7 +194,7 @@ def gpu_self_test(torch):
         print(f"{OK} matmul throughput: fp16 {rates['fp16']:.1f} TFLOP/s, "
               f"bf16 {rates['bf16']:.1f} TFLOP/s")
         if ratio >= 1.25:
-            print(f"         fp16 is {ratio:.1f}x faster here — add --dtype float16")
+            print(f"         fp16 is {ratio:.1f}x faster here - add --dtype float16")
     except Exception as exc:
         print(f"{WARN} could not time matmul throughput: {exc}")
 
@@ -195,7 +205,7 @@ def gpu_self_test(torch):
             names = [n for n in ('flash', 'mem_efficient') if backends[n]]
             print(f"{OK} fused attention available ({', '.join(names)})")
         else:
-            print(f"{WARN} no fused attention kernel — torch will use the math path")
+            print(f"{WARN} no fused attention kernel - torch will use the math path")
             print("         On ROCm this means AOTriton has no kernels for this GPU")
             print("         (RDNA2 among them). Attention becomes memory-bound; the")
             print("         chunked fallback below keeps it from blowing up VRAM.")
@@ -252,7 +262,7 @@ def main():
     parser.add_argument("--no-gpu-test", action="store_true", help="Skip the device self-test")
     args = parser.parse_args()
 
-    print(f"Pixal3D environment check — {platform.platform()}")
+    print(f"Pixal3D environment check - {platform.platform()}")
     print(f"Python {sys.version.split()[0]} at {sys.executable}")
 
     torch = check_torch()
@@ -287,7 +297,7 @@ def main():
 
     print()
     if missing or not passed:
-        print("Some checks failed — see above.")
+        print("Some checks failed - see above.")
         return 1
     print("All checks passed.")
     return 0

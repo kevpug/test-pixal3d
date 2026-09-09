@@ -191,6 +191,22 @@ if errorlevel 1 (
     goto fail
 )
 
+REM ------------------------------------------------------------- moge ----
+REM Installed separately with --no-deps: MoGe declares flex-gemm (CUDA/Triton,
+REM cannot build here), opencv-python (fights opencv-python-headless) and
+REM gradio>=6. We use one class from it whose imports are torch, numpy,
+REM huggingface_hub and utils3d_moge, all of which the step above installed.
+echo.
+echo ==^> Installing MoGe-2 for camera estimation
+"%VPY%" -m pip install --no-deps git+https://github.com/microsoft/MoGe.git@74fbce054ebed49800de42d0ad0e83495065719a
+if errorlevel 1 (
+    echo.
+    echo ERROR: MoGe installation failed. Camera FOV estimation will not work;
+    echo        everything else still does if you pass --fov manually, e.g.
+    echo          python inference.py --image in.png --output out.glb --fov 0.2
+    goto fail
+)
+
 REM ------------------------------------------------------------ check ----
 echo.
 echo ==^> Checking the installation

@@ -1,9 +1,9 @@
 """
 Correctness tests for the pure-PyTorch fallbacks.
 
-Each fallback is checked against an independent reference — a dense
+Each fallback is checked against an independent reference - a dense
 ``F.conv3d`` for the sparse convolution, a Python loop for the trilinear
-sampler, a brute-force dictionary for the dual-grid quad lookup — so a pass
+sampler, a brute-force dictionary for the dual-grid quad lookup - so a pass
 means the fallback computes the same thing as the CUDA extension it replaces,
 not merely that it runs.
 

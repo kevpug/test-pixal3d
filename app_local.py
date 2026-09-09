@@ -3,7 +3,7 @@ Local web UI for Pixal3D.
 
 ``app.py`` targets Hugging Face Spaces: it imports ``spaces``, serves a custom
 frontend and renders previews with nvdiffrast, none of which works on a ROCm
-box. This is the local equivalent — single-view and multi-view generation with
+box. This is the local equivalent - single-view and multi-view generation with
 the VRAM presets exposed, previewing the result in the browser's own glTF
 viewer so no rasteriser is needed.
 
@@ -145,7 +145,7 @@ def generate_single(image, seed, resolution, texture_size, decimate, fov,
         elapsed = time.time() - started
         profiling.print_summary()
         profiling.reset()
-        return out_path, out_path, f"Done in {elapsed:.0f}s — resolution {res}, texture {int(texture_size)}px"
+        return out_path, out_path, f"Done in {elapsed:.0f}s - resolution {res}, texture {int(texture_size)}px"
     except torch.cuda.OutOfMemoryError:
         runtime.free_memory()
         raise gr.Error(
@@ -197,7 +197,7 @@ def generate_multiview(views_dir, num_views, seed, resolution, texture_size, dec
         elapsed = time.time() - started
         profiling.print_summary()
         profiling.reset()
-        return out_path, out_path, f"Done in {elapsed:.0f}s — {len(views['view_names'])} views, resolution {res}"
+        return out_path, out_path, f"Done in {elapsed:.0f}s - {len(views['view_names'])} views, resolution {res}"
     except torch.cuda.OutOfMemoryError:
         runtime.free_memory()
         raise gr.Error("Out of VRAM. Restart with --vram 8gb or --vram 6gb, or use fewer views.")
@@ -209,7 +209,7 @@ def generate_multiview(views_dir, num_views, seed, resolution, texture_size, dec
 def build_ui():
     with gr.Blocks(title="Pixal3D", theme=gr.themes.Soft()) as demo:
         gr.Markdown(f"# Pixal3D\n{runtime.describe()}  \n"
-                    f"VRAM preset **{PRESET.name}** — resolution {PRESET.resolution}, "
+                    f"VRAM preset **{PRESET.name}** - resolution {PRESET.resolution}, "
                     f"texture {PRESET.texture_size}px, low_vram={PRESET.low_vram}, "
                     f"block_offload={PRESET.block_offload}")
 
@@ -307,7 +307,7 @@ def main():
     DTYPE = runtime.resolve_dtype(args.dtype)
     runtime.set_cond_dtype(runtime.resolve_cond_dtype(args.cond_dtype))
     if runtime.get_device() == 'cpu':
-        print("[WARN] No GPU detected — run scripts/check_env.py to diagnose.")
+        print("[WARN] No GPU detected - run scripts/check_env.py to diagnose.")
 
     build_ui().launch(server_name=args.host, server_port=args.port,
                       share=args.share, inbrowser=True)

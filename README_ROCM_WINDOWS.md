@@ -35,8 +35,8 @@ back off.
 - [Python 3.12 or 3.13](https://www.python.org/downloads/) with "Add to PATH"
   ticked. AMD publishes ROCm wheels for cp312/cp313/cp314 only, so 3.11 and
   earlier cannot work
-- [Git for Windows](https://git-scm.com/download/win) — MoGe-2 installs from a
-  git URL
+- [Git for Windows](https://git-scm.com/download/win) - MoGe-2 and its
+  utils3d fork install from git URLs
 - ~40 GB free: ~20 GB of weights, plus the ROCm SDK
 
 **Then**
@@ -313,6 +313,23 @@ and MoGe all use ordinary convolutions, so they hit it. Later runs skip it.
 
 **`No torch wheels for cpXXX/win_amd64`** — AMD publishes cp312, cp313 and cp314
 Windows builds. Use Python 3.12.
+
+**`ResolutionImpossible` mentioning `moge` and `trimesh`** — you are on an old
+`requirements-rocm.txt`. MoGe v3 declares `flex-gemm` (CUDA/Triton, which is
+exactly what cannot build here), `opencv-python` (the same `cv2` package as our
+headless build) and `gradio>=6`, so it is no longer resolved with everything
+else. Setup installs it on its own:
+
+```bat
+.venv\Scripts\python.exe -m pip install --no-deps ^
+    git+https://github.com/microsoft/MoGe.git@74fbce054ebed49800de42d0ad0e83495065719a
+```
+
+Only one class is used from it, `MoGeModel` from `moge.model.v2`, whose whole
+import graph is torch, numpy, huggingface_hub and `utils3d_moge` — and that
+fork is installed normally, under its own distribution name so it cannot
+collide with the `utils3d` Pixal3D pins. MoGe is optional: without it, pass the
+camera FOV yourself with `--fov 0.2`.
 
 **`git is not on PATH`** — MoGe-2 (camera estimation) installs from a git URL.
 Install Git for Windows and re-run setup. To skip MoGe entirely, pass an

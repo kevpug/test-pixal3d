@@ -205,6 +205,19 @@ Write-Step "Installing the remaining dependencies"
 & $venvPy -m pip install -r requirements-rocm.txt
 if ($LASTEXITCODE -ne 0) { Fail "dependency installation failed" }
 
+# ------------------------------------------------------------------ moge ----
+# --no-deps on purpose: MoGe declares flex-gemm (CUDA/Triton, cannot build
+# here), opencv-python (fights opencv-python-headless) and gradio>=6.
+Write-Step "Installing MoGe-2 for camera estimation"
+& $venvPy -m pip install --no-deps "git+https://github.com/microsoft/MoGe.git@74fbce054ebed49800de42d0ad0e83495065719a"
+if ($LASTEXITCODE -ne 0) {
+    Fail @"
+MoGe installation failed. Camera FOV estimation will not work; everything
+       else still does if you pass --fov manually, e.g.
+         python inference.py --image in.png --output out.glb --fov 0.2
+"@
+}
+
 # ----------------------------------------------------------------- check ----
 Write-Step "Checking the installation"
 & $venvPy scripts\check_env.py
