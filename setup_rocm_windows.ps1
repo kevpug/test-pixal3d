@@ -20,7 +20,8 @@
       gfx1151        Ryzen AI Max / Strix Halo
 
 .PARAMETER Python
-    Python executable to build the venv from. Default: py -3.12, then python.
+    Full path to a python.exe to build the venv from (spaces are fine).
+    Default: py -3.12, then py -3.13, then python, then python3.
 
 .PARAMETER VenvPath
     Where to create the environment. Default: .venv
@@ -45,7 +46,12 @@ param(
     [switch]$SkipTorch
 )
 
-$ErrorActionPreference = "Stop"
+# NOT "Stop". In Windows PowerShell 5.1, anything a native command writes to
+# stderr becomes a terminating NativeCommandError when this is "Stop" -- and
+# py.exe (when a requested version is missing) and pip (ordinary warnings)
+# both write to stderr routinely. Every native call below checks $LASTEXITCODE
+# explicitly instead, which is what actually indicates failure.
+$ErrorActionPreference = "Continue"
 Set-Location $PSScriptRoot
 
 function Write-Step($text) {
@@ -87,28 +93,79 @@ try {
 }
 
 # ------------------------------------------------------------ interpreter ---
-if (-not $Python) {
-    # 3.12 first: AMD publishes cp312/cp313/cp314 Windows wheels, and every
-    # CPU dependency here (xatlas, fast-simplification, opencv) ships cp312.
-    foreach ($candidate in @("py -3.12", "py -3.13", "python")) {
-        $parts = $candidate.Split(" ")
-        if (Get-Command $parts[0] -ErrorAction SilentlyContinue) {
-            $version = & $parts[0] $parts[1..($parts.Length - 1)] -c "import sys;print('%d.%d'%sys.version_info[:2])" 2>$null
-            if ($LASTEXITCODE -eq 0 -and $version) {
-                $Python = $candidate
-                Write-Host "    Python $version ($candidate)"
-                break
-            }
+# 3.12 first: AMD publishes cp312/cp313/cp314 ROCm wheels, and the mesh
+# dependencies (xatlas, fast-simplification) ship cp312/cp313.
+$SupportedPython = @("3.12", "3.13")
+
+function Get-PythonVersion($exe, $exeArgs) {
+    # "3.12", or $null if this interpreter does not exist or does not run.
+    # Merges stderr into the output stream so py.exe's "requested version is
+    # not installed" chatter cannot derail the script; the exit code decides.
+    $probe = "import sys;print('%d.%d' % sys.version_info[:2])"
+    try {
+        if ($exeArgs.Count -gt 0) {
+            $out = & $exe @exeArgs -c $probe 2>&1
+        } else {
+            $out = & $exe -c $probe 2>&1
         }
+    } catch {
+        return $null
     }
-}
-if (-not $Python) {
-    Fail "No Python found. Install Python 3.12 from python.org (tick 'Add to PATH')."
+    if ($LASTEXITCODE -ne 0) { return $null }
+    return ($out | Where-Object { $_ -is [string] -and $_ -match '^\d+\.\d+$' } |
+            Select-Object -First 1)
 }
 
-$pyParts = $Python.Split(" ")
-$pyExe = $pyParts[0]
-$pyArgs = if ($pyParts.Length -gt 1) { $pyParts[1..($pyParts.Length - 1)] } else { @() }
+$pyExe = ""
+$pyArgs = @()
+
+if ($Python) {
+    # An explicit -Python is taken whole, so a path with spaces still works.
+    $pyExe = $Python
+    $found = Get-PythonVersion $pyExe @()
+    if (-not $found) { Fail "-Python '$Python' does not run." }
+    if ($SupportedPython -notcontains $found) {
+        Write-Warn "-Python '$Python' is Python $found; 3.12 or 3.13 is expected."
+    }
+    Write-Host "    Python $found ($Python)"
+} else {
+    foreach ($candidate in @(
+        @{ exe = "py";      args = @("-3.12") },
+        @{ exe = "py";      args = @("-3.13") },
+        @{ exe = "python";  args = @() },
+        @{ exe = "python3"; args = @() }
+    )) {
+        if (-not (Get-Command $candidate.exe -ErrorAction SilentlyContinue)) { continue }
+        $found = Get-PythonVersion $candidate.exe $candidate.args
+        if (-not $found) { continue }
+        $shown = (@($candidate.exe) + $candidate.args) -join " "
+        if ($SupportedPython -notcontains $found) {
+            Write-Warn "$shown is Python $found - need 3.12 or 3.13, skipping"
+            continue
+        }
+        $pyExe = $candidate.exe
+        $pyArgs = $candidate.args
+        Write-Host "    Python $found ($shown)"
+        break
+    }
+}
+
+if (-not $pyExe) {
+    $installed = ""
+    if (Get-Command py -ErrorAction SilentlyContinue) {
+        $list = (& py --list 2>&1 | Out-String).Trim()
+        if ($list) { $installed = "`n`n       py.exe reports:`n" + $list }
+    }
+    Fail @"
+No suitable Python found. This needs Python 3.12 or 3.13.
+       AMD publishes ROCm wheels for cp312/cp313/cp314 only, and the mesh
+       dependencies ship cp312/cp313, so older or newer versions cannot work.
+
+       Install 3.12 from https://www.python.org/downloads/
+       and tick "Add python.exe to PATH", then re-run this script.
+       Already have it elsewhere?  .\setup_rocm_windows.ps1 -Python "C:\Path\To\python.exe"$installed
+"@
+}
 
 # -------------------------------------------------------------- the venv ----
 Write-Step "Creating the virtual environment at $VenvPath"

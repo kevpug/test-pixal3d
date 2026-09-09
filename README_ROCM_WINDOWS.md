@@ -32,7 +32,9 @@ back off.
 - An AMD RDNA2 or newer GPU (RX 6000 / 7000 / 9000, or Ryzen AI Max)
 - **AMD Adrenalin driver 26.1.1 or newer** — this carries the HIP runtime the
   wheels load at import time
-- [Python 3.12](https://www.python.org/downloads/) with "Add to PATH" ticked
+- [Python 3.12 or 3.13](https://www.python.org/downloads/) with "Add to PATH"
+  ticked. AMD publishes ROCm wheels for cp312/cp313/cp314 only, so 3.11 and
+  earlier cannot work
 - [Git for Windows](https://git-scm.com/download/win) — MoGe-2 installs from a
   git URL
 - ~40 GB free: ~20 GB of weights, plus the ROCm SDK
@@ -49,8 +51,20 @@ That creates `.venv`, installs AMD's ROCm build of PyTorch for your GPU family,
 installs the remaining dependencies, and runs the environment check. It takes a
 while — the ROCm wheels are several gigabytes.
 
-If PowerShell refuses to run the script, use the `.bat` (it already bypasses the
-execution policy for that one process).
+It is plain `cmd`, with no PowerShell step: PowerShell adds an execution policy,
+a script encoding that Windows PowerShell 5.1 misreads without a BOM, and a rule
+that turns any native command's stderr into a terminating error — and both
+`pip` and `py.exe` write to stderr routinely. `setup_rocm_windows.ps1` is kept
+as an alternative for people who prefer it, but the `.bat` is the tested path.
+
+Options:
+
+```bat
+setup_rocm_windows.bat --family gfx110X-dgpu      REM force the GPU family
+setup_rocm_windows.bat --rocm-version 7.13.0a20260421
+setup_rocm_windows.bat --python "C:\Path\To\python.exe"
+setup_rocm_windows.bat --skip-torch               REM keep an existing torch
+```
 
 **If you already run image models on this GPU**
 
