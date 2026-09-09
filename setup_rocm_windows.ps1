@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     One-shot setup for Pixal3D on Windows with an AMD GPU (ROCm).
 
@@ -9,12 +9,12 @@
 
     Nothing is compiled. Pixal3D's CUDA-only extensions (flash_attn, flex_gemm,
     cumesh, o_voxel, nvdiffrast) are replaced by the pure-PyTorch fallbacks in
-    pixal3d/compat, because Triton — which flex_gemm needs — has no Windows
+    pixal3d/compat, because Triton - which flex_gemm needs - has no Windows
     ROCm build and the rest are CUDA-only.
 
 .PARAMETER Family
     GPU family. Default: detected from the installed adapter.
-      gfx103X-dgpu   RX 6000 series (RDNA2) — RX 6800M, 6800, 6900 XT, 6600 ...
+      gfx103X-dgpu   RX 6000 series (RDNA2) - RX 6800M, 6800, 6900 XT, 6600 ...
       gfx110X-dgpu   RX 7000 series (RDNA3)
       gfx120X-all    RX 9000 series (RDNA4)
       gfx1151        Ryzen AI Max / Strix Halo
@@ -120,7 +120,7 @@ if (-not (Test-Path $VenvPath)) {
 }
 
 $venvPy = Join-Path $VenvPath "Scripts\python.exe"
-if (-not (Test-Path $venvPy)) { Fail "$venvPy not found — is $VenvPath a virtual environment?" }
+if (-not (Test-Path $venvPy)) { Fail "$venvPy not found - is $VenvPath a virtual environment?" }
 
 & $venvPy -m pip install --quiet --upgrade pip setuptools wheel
 if ($LASTEXITCODE -ne 0) { Fail "could not upgrade pip" }
@@ -133,9 +133,11 @@ if (-not $SkipTorch) {
     if ($RocmVersion) { $installArgs += @("--rocm-version", $RocmVersion) }
     & $venvPy @installArgs
     if ($LASTEXITCODE -ne 0) {
-        Fail "PyTorch installation failed.
+        Fail @"
+PyTorch installation failed.
        Run '$venvPy scripts\install_rocm_torch.py --list' to see the builds on offer,
-       then retry with -RocmVersion <build>."
+       then retry with:  -RocmVersion THE_BUILD_ID
+"@
     }
 } else {
     Write-Step "Skipping PyTorch (-SkipTorch)"
@@ -155,7 +157,7 @@ Write-Host ""
 if ($checkResult -eq 0) {
     Write-Host "Setup complete." -ForegroundColor Green
 } else {
-    Write-Host "Setup finished, but some checks failed — see above." -ForegroundColor Yellow
+    Write-Host "Setup finished, but some checks failed - see above." -ForegroundColor Yellow
 }
 Write-Host ""
 Write-Host "  Activate:      .\$VenvPath\Scripts\Activate.ps1"
