@@ -36,6 +36,16 @@ FAMILIES: Dict[str, Tuple[str, ...]] = {
     'gfx1151': ('Ryzen AI Max', 'Strix Halo'),
 }
 
+# Newest is not safest. The Windows ROCm stack has had repeated regressions in
+# device enumeration on RDNA2 -- HIP SDK 7.1.1 stopped detecting gfx1030
+# (ROCm/hip#3899), and 7.13 nightlies have broken other families outright
+# (ROCm/TheRock#5543). These builds are the ones the community reports as
+# actually working for each family; --known-good pins them.
+KNOWN_GOOD: Dict[str, str] = {
+    'gfx103X-dgpu': '7.12.0a20260204',
+}
+
+
 def fetch(url: str) -> str:
     with urllib.request.urlopen(url, timeout=60) as response:
         return response.read().decode('utf-8', 'replace')
@@ -145,6 +155,9 @@ def main() -> int:
     parser.add_argument('--rocm-version', default=None,
                         help="Pin a build, e.g. 7.13.0a20260421. Default: newest available.")
     parser.add_argument('--list', action='store_true', help="List available builds and exit")
+    parser.add_argument('--known-good', action='store_true',
+                        help="Pin the build reported to work for this family rather than "
+                             "the newest. Try this if the newest one crashes.")
     parser.add_argument('--dry-run', action='store_true', help="Print the pip command only")
     parser.add_argument('--audio', action='store_true', help="Also install torchaudio")
     parser.add_argument('--python-tag', default=None,
@@ -175,6 +188,15 @@ def main() -> int:
         for rocm_version, torch_version, name in builds:
             print(f"  rocm {rocm_version}  torch {torch_version}  {name}")
         return 0
+
+    wanted = args.rocm_version
+    if args.known_good and not wanted:
+        wanted = KNOWN_GOOD.get(family)
+        if wanted is None:
+            print(f"note: no known-good build recorded for {family}; using the newest")
+        else:
+            print(f"known-good pin for {family}: {wanted}")
+    args.rocm_version = wanted
 
     if args.rocm_version:
         selected = [b for b in builds if b[0] == args.rocm_version]

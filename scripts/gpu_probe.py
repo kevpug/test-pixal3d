@@ -165,8 +165,14 @@ def sweep(timeout: int) -> int:
 
     print()
     if not winners:
-        print("No combination worked. That points at the driver or the wheels")
-        print("rather than a setting -- see the report above for versions.")
+        print("No combination worked, so this is the driver or the wheels rather")
+        print("than a setting. In order:")
+        print("  1. Pin the build known to work on RDNA2 instead of the newest:")
+        print("       python scripts\\install_rocm_torch.py --known-good")
+        print("  2. Install the latest Microsoft Visual C++ Redistributable.")
+        print("  3. Change the Adrenalin driver. 26.1.1 is named in several")
+        print("     access-violation reports (ROCm/ROCm#5871); both newer and")
+        print("     older builds are worth trying.")
         return 1
 
     overrides, label = winners[0]
@@ -325,7 +331,13 @@ def main():
         print("  3. The ROCm SDK wheels and the torch wheel must share a build")
         print("     date. To see what is on offer and pin one:")
         print("       python scripts\\install_rocm_torch.py --list")
-        print("  4. Re-run with --verbose to get the HIP runtime's own log.")
+        print("  4. Pin the build the community reports as working for RDNA2")
+        print("     rather than the newest nightly -- Windows ROCm has had")
+        print("     repeated enumeration regressions on this family:")
+        print("       python scripts\\install_rocm_torch.py --known-good")
+        print("  5. Install the latest Microsoft Visual C++ Redistributable.")
+        print("     The HIP DLLs need it, and a missing one faults like this.")
+        print("  6. Re-run with --verbose to get the HIP runtime's own log.")
         print()
         print("  Or let it try all of them at once:")
         print("    gpu_probe.bat --sweep")

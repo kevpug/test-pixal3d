@@ -30,8 +30,13 @@ back off.
 
 - Windows 10/11, 64-bit
 - An AMD RDNA2 or newer GPU (RX 6000 / 7000 / 9000, or Ryzen AI Max)
-- **AMD Adrenalin driver 26.1.1 or newer** — this carries the HIP runtime the
-  wheels load at import time
+- **A recent AMD Adrenalin driver**, which carries the HIP runtime the wheels
+  load at import. Note that 26.1.1 specifically is named in several
+  access-violation reports
+  ([ROCm/ROCm#5871](https://github.com/ROCm/ROCm/issues/5871)); if the GPU
+  stack crashes, changing the driver is a real lever in both directions
+- **The latest [Microsoft Visual C++ Redistributable](https://aka.ms/vs/17/release/vc_redist.x64.exe)**
+  — the HIP DLLs need it, and a missing one faults rather than erroring
 - [Python 3.12 or 3.13](https://www.python.org/downloads/) with "Add to PATH"
   ticked. AMD publishes ROCm wheels for cp312/cp313/cp314 only, so 3.11 and
   earlier cannot work
@@ -294,6 +299,28 @@ wheels do not match the torch wheel's build date. Reinstall with a pinned build:
 .venv\Scripts\python.exe scripts\install_rocm_torch.py --list
 .venv\Scripts\python.exe scripts\install_rocm_torch.py --rocm-version 7.13.0a20260421
 ```
+
+**`ACCESS_VIOLATION (0xC0000005)` from `gpu_probe.bat`** — the HIP runtime is
+crashing, which happens before any GPU kernel is compiled or launched, so this
+is not a missing-code-object problem. It is a version disagreement between the
+wheels, the driver, and the C++ runtime. In order:
+
+```bat
+gpu_probe.bat --sweep        REM tries 13 env configurations, one process each
+python scripts\install_rocm_torch.py --known-good
+```
+
+`--known-good` pins the build the community reports as working on RDNA2
+(`7.12.0a20260204`) rather than the newest nightly. Newest is not safest here:
+HIP SDK 7.1.1 stopped detecting gfx1030 altogether
+([ROCm/hip#3899](https://github.com/ROCm/hip/issues/3899)), and 7.13 nightlies
+have broken whole families
+([ROCm/TheRock#5543](https://github.com/ROCm/TheRock/issues/5543)). Then
+install the Visual C++ Redistributable, and try a different Adrenalin driver.
+
+If none of that works, Windows ROCm on RDNA2 is simply not reliable right now,
+and the honest alternatives are dual-booting Linux (where gfx1031 works with
+`HSA_OVERRIDE_GFX_VERSION=10.3.0`) or a ZLUDA setup.
 
 **No output at all about the GPU, and `python -c "import torch;
 print(torch.cuda.device_count())"` prints nothing either** — the process is
