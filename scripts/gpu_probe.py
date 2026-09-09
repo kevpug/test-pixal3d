@@ -91,16 +91,199 @@ def run_step(source: str, verbose: bool, timeout: int = 180):
     return done.returncode, (done.stdout or "").strip(), (done.stderr or "").strip()
 
 
+
+# Environment knobs that are known to decide whether the HIP runtime survives
+# device enumeration. Tried as a matrix rather than one per attempt, because
+# each guess otherwise costs a full round trip.
+SWEEP = [
+    ({}, "baseline"),
+    ({'HIP_VISIBLE_DEVICES': '0'}, "HIP device 0 only"),
+    ({'HIP_VISIBLE_DEVICES': '1'}, "HIP device 1 only"),
+    ({'ROCR_VISIBLE_DEVICES': '0'}, "ROCR device 0 only"),
+    ({'ROCR_VISIBLE_DEVICES': '1'}, "ROCR device 1 only"),
+    ({'HSA_OVERRIDE_GFX_VERSION': '10.3.0'}, "report as gfx1030"),
+    ({'HSA_OVERRIDE_GFX_VERSION': '10.3.0', 'HIP_VISIBLE_DEVICES': '0'},
+     "gfx1030 + HIP device 0"),
+    ({'HSA_OVERRIDE_GFX_VERSION': '10.3.0', 'HIP_VISIBLE_DEVICES': '1'},
+     "gfx1030 + HIP device 1"),
+    ({'HSA_OVERRIDE_GFX_VERSION': '10.3.0', 'ROCR_VISIBLE_DEVICES': '0'},
+     "gfx1030 + ROCR device 0"),
+    ({'HSA_ENABLE_SDMA': '0'}, "SDMA disabled"),
+    ({'HSA_OVERRIDE_GFX_VERSION': '10.3.0', 'HSA_ENABLE_SDMA': '0'},
+     "gfx1030 + SDMA disabled"),
+    ({'GPU_MAX_HW_QUEUES': '1'}, "single hardware queue"),
+    ({'AMD_SERIALIZE_KERNEL': '3', 'HSA_OVERRIDE_GFX_VERSION': '10.3.0'},
+     "gfx1030 + serialized kernels"),
+]
+
+SWEEP_KEYS = sorted({k for case, _ in SWEEP for k in case})
+
+
+def run_case(source: str, overrides: dict, timeout: int = 120):
+    """Run one snippet with a clean slate plus `overrides`."""
+    env = {k: v for k, v in os.environ.items() if k not in SWEEP_KEYS}
+    env.update(overrides)
+    env['PYTHONFAULTHANDLER'] = '1'
+    env['PYTHONUNBUFFERED'] = '1'
+    try:
+        done = subprocess.run([sys.executable, '-X', 'faulthandler', '-c', source],
+                              capture_output=True, text=True, timeout=timeout, env=env)
+    except subprocess.TimeoutExpired:
+        return None, "", "timed out"
+    return done.returncode, (done.stdout or "").strip(), (done.stderr or "").strip()
+
+
+def sweep(timeout: int) -> int:
+    """Find an environment where device enumeration survives, if one exists."""
+    print("Environment sweep")
+    print("-" * 17)
+    print("Each row runs in its own process, so a crash only ends that row.")
+    print()
+    count_src = "import torch; print(torch.cuda.device_count())"
+    work_src = ("import torch; p = torch.cuda.get_device_properties(0);"
+                " x = torch.randn(256, 256, device='cuda');"
+                " print(p.name, '|', getattr(p, 'gcnArchName', '?'),"
+                " '| matmul', float((x @ x).sum()) == float((x @ x).sum()))")
+    winners = []
+    for overrides, label in SWEEP:
+        code, out, _ = run_case(count_src, overrides, timeout)
+        if code != 0:
+            print(f"  crash   {label:28} {describe_exit(code).splitlines()[0] if code is not None else 'timed out'}")
+            continue
+        if out.strip() in ('0', ''):
+            print(f"  0 gpus  {label:28} survived, but enumerated nothing")
+            continue
+        code2, out2, err2 = run_case(work_src, overrides, timeout)
+        if code2 == 0:
+            print(f"  WORKS   {label:28} {out}, {out2}")
+            winners.append((overrides, label))
+        else:
+            detail = describe_exit(code2).splitlines()[0] if code2 is not None else 'timed out'
+            print(f"  partial {label:28} {out} device(s), but using one: {detail}")
+            if err2:
+                print(f"          {err2.splitlines()[-1][:100]}")
+
+    print()
+    if not winners:
+        print("No combination worked. That points at the driver or the wheels")
+        print("rather than a setting -- see the report above for versions.")
+        return 1
+
+    overrides, label = winners[0]
+    print(f"Use this: {label}")
+    if overrides:
+        for key, value in overrides.items():
+            print(f"  set {key}={value}")
+        print()
+        print("Set them in the same shell before running Pixal3D, or once for")
+        print("your account so every new window inherits them:")
+        for key, value in overrides.items():
+            print(f"  setx {key} {value}")
+    else:
+        print("  (no environment changes needed)")
+    return 0
+
+
+def report_environment() -> None:
+    """Driver versions and installed ROCm wheels -- the two usual culprits."""
+    print("Display adapters (from the driver registry)")
+    print("-" * 42)
+    try:
+        import winreg
+        key_path = r"SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}"
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, key_path) as root:
+            index = 0
+            while True:
+                try:
+                    sub = winreg.EnumKey(root, index)
+                except OSError:
+                    break
+                index += 1
+                if not sub.isdigit():
+                    continue
+                try:
+                    with winreg.OpenKey(root, sub) as adapter:
+                        desc = winreg.QueryValueEx(adapter, "DriverDesc")[0]
+                        version = winreg.QueryValueEx(adapter, "DriverVersion")[0]
+                        print(f"  {desc}  driver {version}")
+                except OSError:
+                    continue
+    except ImportError:
+        print("  (not Windows)")
+    except Exception as exc:
+        print(f"  could not read: {type(exc).__name__}: {exc}")
+    print()
+
+    # An access violation inside hipGetDeviceCount is usually a version
+    # mismatch across a DLL boundary. The driver installs a HIP runtime into
+    # System32 and the wheels ship their own; if the wrong one wins the loader
+    # search, the struct layouts disagree and the runtime reads a bad pointer.
+    print("HIP runtime DLLs on this machine")
+    print("-" * 32)
+    try:
+        import glob
+        seen = []
+        for root in [os.path.join(os.environ.get('SystemRoot', r'C:\\Windows'), 'System32')] + \
+                    [os.path.dirname(os.path.dirname(os.__file__)) + os.sep + 'site-packages']:
+            for name in ('amdhip64*.dll', 'amd_comgr*.dll', 'hiprtc*.dll'):
+                for hit in glob.glob(os.path.join(root, '**', name), recursive=True)[:6]:
+                    seen.append(hit)
+        if seen:
+            for hit in seen:
+                try:
+                    size = os.path.getsize(hit)
+                except OSError:
+                    size = -1
+                print(f"  {size/1e6:8.1f} MB  {hit}")
+            roots = {('System32' if 'System32' in h else 'wheel') for h in seen}
+            if len(roots) > 1:
+                print()
+                print("  Both the driver's copy and the wheels' copy are present.")
+                print("  Whichever the loader picks must match the other components;")
+                print("  a driver older than the wheels is the usual reason this")
+                print("  crashes rather than reporting an error.")
+        else:
+            print("  none found (not Windows, or the wheels are elsewhere)")
+    except Exception as exc:
+        print(f"  could not scan: {type(exc).__name__}: {exc}")
+    print()
+
+    print("Installed ROCm / torch wheels")
+    print("-" * 29)
+    try:
+        from importlib.metadata import distributions
+        rows = sorted({(d.metadata['Name'], d.version) for d in distributions()
+                       if (d.metadata['Name'] or '').lower().startswith(('rocm', 'torch'))})
+        for name, version in rows:
+            print(f"  {name:34} {version}")
+        # The SDK and torch must come from one build; a date mismatch is the
+        # classic cause of a torch that loads and then crashes in the runtime.
+        stamps = {v.split('a')[-1][:8] for _, v in rows if 'a20' in v}
+        if len(stamps) > 1:
+            print()
+            print(f"  MISMATCH: build dates {sorted(stamps)} are not all the same.")
+            print("  Reinstall one consistent set:")
+            print("    python scripts\\install_rocm_torch.py --rocm-version <one build>")
+    except Exception as exc:
+        print(f"  could not list: {type(exc).__name__}: {exc}")
+    print()
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--verbose', action='store_true',
                         help="Set AMD_LOG_LEVEL=4 so the HIP runtime logs what it does.")
     parser.add_argument('--timeout', type=int, default=180)
+    parser.add_argument('--sweep', action='store_true',
+                        help="Try the environment settings that decide whether the "
+                             "HIP runtime survives enumeration, and report which work.")
     args = parser.parse_args()
 
     print("Pixal3D GPU probe")
     print("=" * 17)
+    if args.sweep:
+        report_environment()
+        return sweep(args.timeout)
     print(f"python: {sys.executable}")
     for name in ('HIP_VISIBLE_DEVICES', 'ROCR_VISIBLE_DEVICES', 'CUDA_VISIBLE_DEVICES',
                  'HSA_OVERRIDE_GFX_VERSION', 'GPU_DEVICE_ORDINAL'):
@@ -143,6 +326,9 @@ def main():
         print("     date. To see what is on offer and pin one:")
         print("       python scripts\\install_rocm_torch.py --list")
         print("  4. Re-run with --verbose to get the HIP runtime's own log.")
+        print()
+        print("  Or let it try all of them at once:")
+        print("    gpu_probe.bat --sweep")
     return 1
 
 
