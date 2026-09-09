@@ -1,0 +1,44 @@
+# Python dependencies for the ROCm / Windows path.
+#
+# torch and torchvision are NOT listed here: they come from AMD's nightly
+# index and are installed by scripts/install_rocm_torch.py, which resolves a
+# self-consistent ROCm SDK + torch set for your GPU family.
+#
+# Nothing here needs a compiler. The CUDA-only extensions Pixal3D normally
+# relies on (flash_attn, flex_gemm, cumesh, o_voxel, nvdiffrast) are replaced
+# by pixal3d/compat, so this list is deliberately wheel-only.
+#
+#   pip install -r requirements-rocm.txt
+
+# --- Core pipeline ---
+transformers==4.57.3
+diffusers==0.37.1
+accelerate==1.13.0
+safetensors
+huggingface_hub
+timm==1.0.22
+kornia==0.8.2
+einops
+
+# --- Camera estimation (MoGe-2). Needs git on PATH. ---
+git+https://github.com/microsoft/MoGe.git
+
+# --- Geometry and I/O ---
+trimesh==4.10.1
+plyfile==1.1.3
+zstandard==0.25.0
+pillow==12.0.0
+imageio==2.37.2
+imageio-ffmpeg==0.6.0
+opencv-python-headless==4.12.0.88
+scipy                       # trimesh uses it for area-weighted vertex normals
+https://github.com/LDYang694/Storages/releases/download/20260430/utils3d-0.0.2-py3-none-any.whl
+
+# --- Mesh processing for the GLB fallback (replaces cumesh) ---
+xatlas>=0.0.9               # UV atlas generation and packing
+fast-simplification>=0.1.7  # quadric decimation
+
+# --- UI and misc ---
+gradio>=5.0
+tqdm==4.67.1
+easydict==1.13

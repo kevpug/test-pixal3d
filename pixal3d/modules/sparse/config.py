@@ -1,0 +1,53 @@
+from typing import *
+from ...compat.probe import default_attn_backend, default_sparse_conv_backend
+
+VALID_CONV_BACKENDS = ['none', 'spconv', 'torchsparse', 'flex_gemm', 'torch']
+VALID_ATTN_BACKENDS = ['xformers', 'flash_attn', 'flash_attn_3', 'flash_attn_4', 'sdpa']
+
+CONV = 'flex_gemm'
+DEBUG = False
+ATTN = 'flash_attn'
+
+def __from_env():
+    import os
+    
+    global CONV
+    global DEBUG
+    global ATTN
+    
+    env_sparse_conv_backend = os.environ.get('SPARSE_CONV_BACKEND')
+    env_sparse_debug = os.environ.get('SPARSE_DEBUG')
+    env_sparse_attn_backend = os.environ.get('SPARSE_ATTN_BACKEND')
+    if env_sparse_attn_backend is None:
+        env_sparse_attn_backend = os.environ.get('ATTN_BACKEND')
+
+    if env_sparse_conv_backend is not None and env_sparse_conv_backend in VALID_CONV_BACKENDS:
+        CONV = env_sparse_conv_backend
+    else:
+        # flex_gemm needs Triton, which AMD does not ship for Windows; the
+        # pure-torch backend reads the same checkpoint layout.
+        CONV = default_sparse_conv_backend()
+    if env_sparse_debug is not None:
+        DEBUG = env_sparse_debug == '1'
+    if env_sparse_attn_backend is not None and env_sparse_attn_backend in VALID_ATTN_BACKENDS:
+        ATTN = env_sparse_attn_backend
+    else:
+        ATTN = default_attn_backend()
+        
+    print(f"[SPARSE] Conv backend: {CONV}; Attention backend: {ATTN}")
+        
+
+__from_env()
+    
+
+def set_conv_backend(backend: Literal['none', 'spconv', 'torchsparse', 'flex_gemm', 'torch']):
+    global CONV
+    CONV = backend
+
+def set_debug(debug: bool):
+    global DEBUG
+    DEBUG = debug
+
+def set_attn_backend(backend: Literal['xformers', 'flash_attn', 'flash_attn_3', 'flash_attn_4', 'sdpa']):
+    global ATTN
+    ATTN = backend

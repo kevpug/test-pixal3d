@@ -1,0 +1,1493 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pixal3D | AI Image-to-3D</title>
+    
+    <!-- Fonts & Icons -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/4.0.0/model-viewer.min.js"></script>
+    
+    <style>
+        :root {
+            --primary: #818cf8;
+            --primary-dark: #6366f1;
+            --accent: #10b981;
+            --bg: #0b0f1a;
+            --surface: #161c2d;
+            --surface-light: #222b3e;
+            --border: rgba(255, 255, 255, 0.08);
+            --text: #f1f5f9;
+            --text-dim: #94a3b8;
+            --glass: rgba(255, 255, 255, 0.03);
+            --radius-lg: 24px;
+            --radius-md: 16px;
+            --radius-sm: 8px;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow-x: hidden;
+            background: 
+                radial-gradient(circle at 0% 0%, rgba(99, 102, 241, 0.15) 0%, transparent 40%),
+                radial-gradient(circle at 100% 100%, rgba(16, 185, 129, 0.1) 0%, transparent 40%);
+        }
+
+        /* Top Navigation / Steps */
+        .app-shell {
+            display: flex;
+            height: 100vh;
+            width: 100vw;
+        }
+
+        .sidebar {
+            width: 380px;
+            background: var(--surface);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            padding: 1.5rem;
+            overflow-y: auto;
+            z-index: 10;
+        }
+
+        .main-content {
+            flex: 1;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            background: rgba(0,0,0,0.2);
+        }
+
+        header {
+            padding: 1rem 2rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid var(--border);
+            background: rgba(11, 15, 26, 0.8);
+            backdrop-filter: blur(10px);
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            font-family: 'Outfit', sans-serif;
+            font-weight: 800;
+            font-size: 1.5rem;
+            background: linear-gradient(135deg, #fff 0%, #94a3b8 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .logo i {
+            color: var(--primary);
+            -webkit-text-fill-color: initial;
+        }
+
+        .steps-nav {
+            display: flex;
+            gap: 2rem;
+        }
+
+        .step-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: var(--text-dim);
+            transition: all 0.3s;
+            cursor: pointer;
+            padding: 0.5rem 0;
+            border-bottom: 2px solid transparent;
+        }
+
+        .step-item.active {
+            color: var(--primary);
+            border-bottom-color: var(--primary);
+        }
+
+        .step-item.completed {
+            color: var(--accent);
+        }
+
+        /* Workspace Panels */
+        .workspace {
+            flex: 1;
+            padding: 2rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+
+        .panel {
+            width: 100%;
+            height: 100%;
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            animation: fadeIn 0.4s ease-out;
+            position: relative;
+        }
+
+        .panel.active {
+            display: flex;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Upload Zone */
+        .upload-card {
+            width: 100%;
+            max-width: 600px;
+            aspect-ratio: 4/3;
+            background: var(--surface-light);
+            border: 2px dashed var(--border);
+            border-radius: var(--radius-lg);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.3s;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .upload-card:hover {
+            border-color: var(--primary);
+            background: rgba(99, 102, 241, 0.05);
+        }
+
+        .upload-card img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            display: none;
+        }
+
+        .upload-hint {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 1rem;
+            color: var(--text-dim);
+            text-align: center;
+            padding: 2rem;
+        }
+
+        .upload-hint i {
+            width: 48px;
+            height: 48px;
+            color: var(--primary);
+        }
+
+        /* Result Viewers */
+        .viewer-wrapper {
+            width: 100%;
+            height: 100%;
+            border-radius: var(--radius-lg);
+            overflow: hidden;
+            background: #000;
+            position: relative;
+            box-shadow: 0 40px 100px rgba(0,0,0,0.6);
+        }
+
+        #frame-container {
+            width: 100%;
+            height: 100%;
+            position: relative;
+        }
+
+        .preview-frame {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            display: none;
+        }
+
+        .preview-frame.active {
+            display: block;
+        }
+
+        .viewer-overlay {
+            position: absolute;
+            bottom: 2rem;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(11, 15, 26, 0.6);
+            backdrop-filter: blur(12px);
+            padding: 1rem 2rem;
+            border-radius: 100px;
+            border: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            gap: 1.5rem;
+            width: 80%;
+            max-width: 600px;
+        }
+
+        /* Model Viewer Customization */
+        model-viewer {
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(circle at 50% 50%, #1a2235 0%, #0b0f1a 100%);
+        }
+
+        /* Sidebar Controls */
+        .sidebar-section {
+            margin-bottom: 2rem;
+        }
+
+        .sidebar-section h3 {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--text-dim);
+            margin-bottom: 1.25rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .input-wrapper {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .input-wrapper label {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: #cbd5e1;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .input-wrapper label span {
+            color: var(--primary);
+            font-family: monospace;
+        }
+
+        select, input[type="number"] {
+            background: var(--surface-light);
+            border: 1px solid var(--border);
+            color: white;
+            padding: 0.75rem;
+            border-radius: var(--radius-sm);
+            width: 100%;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        select:focus {
+            border-color: var(--primary);
+        }
+
+        input[type="range"] {
+            -webkit-appearance: none;
+            height: 4px;
+            background: var(--border);
+            border-radius: 2px;
+            margin: 10px 0;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 16px;
+            height: 16px;
+            background: var(--primary);
+            border-radius: 50%;
+            cursor: pointer;
+            border: 3px solid var(--surface);
+            box-shadow: 0 0 10px rgba(129, 140, 248, 0.4);
+        }
+
+        /* Action Buttons */
+        .btn-stack {
+            margin-top: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        .btn {
+            width: 100%;
+            padding: 1rem;
+            border-radius: var(--radius-md);
+            font-weight: 700;
+            font-size: 0.95rem;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.75rem;
+            border: none;
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+            box-shadow: 0 10px 20px rgba(99, 102, 241, 0.2);
+        }
+
+        .btn-primary:hover {
+            background: var(--primary-dark);
+            transform: translateY(-2px);
+        }
+
+        .btn-primary:disabled {
+            background: #334155;
+            color: #64748b;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-outline {
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--text);
+        }
+
+        .btn-outline:hover {
+            background: var(--border);
+        }
+
+        /* Mode Buttons */
+        .mode-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 0.5rem;
+        }
+
+        .mode-tab {
+            background: var(--surface-light);
+            border: 1px solid var(--border);
+            padding: 0.5rem;
+            border-radius: var(--radius-sm);
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            color: var(--text-dim);
+        }
+
+        .mode-tab.active {
+            background: var(--primary);
+            color: white;
+            border-color: var(--primary);
+        }
+
+        /* Examples Footer */
+        .examples-drawer {
+            padding: 1.5rem 2rem;
+            border-top: 1px solid var(--border);
+            background: var(--surface);
+            overflow: hidden;
+            position: relative;
+        }
+
+        .examples-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 1rem;
+        }
+
+        .examples-grid {
+            display: flex;
+            flex-wrap: nowrap;
+            gap: 1rem;
+            overflow-x: auto;
+            overflow-y: hidden;
+            padding-bottom: 1rem;
+            scrollbar-width: none;
+            -ms-overflow-style: none;
+        }
+        .examples-grid::-webkit-scrollbar {
+            display: none;
+        }
+        .examples-track {
+            display: flex;
+            gap: 1rem;
+        }
+
+        .example-item {
+            flex: 0 0 140px;
+            min-width: 140px;
+            aspect-ratio: 1/1;
+            border-radius: var(--radius-md);
+            overflow: hidden;
+            cursor: pointer;
+            border: 2px solid transparent;
+            transition: all 0.2s;
+        }
+
+        .example-item:hover {
+            transform: translateY(-4px);
+            border-color: var(--primary);
+            box-shadow: 0 8px 24px rgba(99, 102, 241, 0.25);
+        }
+
+        /* Gallery Slider */
+        .gallery-slider-wrap {
+            margin-top: 0.75rem;
+            padding: 0 0.25rem;
+        }
+
+        .gallery-slider {
+            -webkit-appearance: none;
+            width: 100%;
+            height: 6px;
+            background: var(--border);
+            border-radius: 3px;
+            outline: none;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .gallery-slider:hover {
+            background: rgba(255, 255, 255, 0.12);
+        }
+
+        .gallery-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 20px;
+            height: 20px;
+            background: linear-gradient(135deg, var(--primary), var(--accent));
+            border-radius: 50%;
+            cursor: grab;
+            box-shadow: 0 2px 8px rgba(99, 102, 241, 0.4);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .gallery-slider::-webkit-slider-thumb:hover {
+            transform: scale(1.2);
+            box-shadow: 0 4px 16px rgba(99, 102, 241, 0.6);
+        }
+
+        .gallery-slider::-webkit-slider-thumb:active {
+            cursor: grabbing;
+            transform: scale(1.1);
+        }
+
+        .gallery-slider::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            background: linear-gradient(135deg, var(--primary), var(--accent));
+            border-radius: 50%;
+            border: none;
+            cursor: grab;
+            box-shadow: 0 2px 8px rgba(99, 102, 241, 0.4);
+        }
+
+        .example-item img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        /* Loading & Status */
+        .loading-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(11, 15, 26, 0.9);
+            z-index: 1000;
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 2rem;
+            backdrop-filter: blur(8px);
+        }
+
+        .loader-ring {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            border: 4px solid var(--border);
+            border-top-color: var(--primary);
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+
+        .status-toast {
+            position: fixed;
+            bottom: 2rem;
+            right: 2rem;
+            background: var(--surface-light);
+            padding: 1rem 1.5rem;
+            border-radius: var(--radius-md);
+            border: 1px solid var(--border);
+            border-left: 4px solid var(--primary);
+            box-shadow: 0 20px 40px rgba(0,0,0,0.4);
+            display: none;
+            z-index: 2000;
+            animation: slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        @keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
+
+        /* Reference thumbnail in preview/result panels */
+        .ref-thumbnail {
+            position: absolute;
+            top: 1rem;
+            right: 1rem;
+            width: 400px;
+            height: 400px;
+            object-fit: cover;
+            border-radius: var(--radius-sm);
+            border: 2px solid var(--border);
+            z-index: 20;
+            display: none;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .ref-thumbnail:hover {
+            transform: scale(1.1);
+        }
+
+        /* Lightbox */
+        .lightbox-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.85);
+            z-index: 3000;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            cursor: zoom-out;
+            backdrop-filter: blur(6px);
+        }
+
+        .lightbox-overlay img {
+            max-width: 80%;
+            max-height: 80%;
+            border-radius: var(--radius-md);
+            box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+        }
+
+    </style>
+</head>
+<body>
+
+    <div class="app-shell">
+        <!-- Left Sidebar: Controls -->
+        <div class="sidebar">
+            <div class="logo" style="margin-bottom: 2.5rem;">
+                <i data-lucide="sparkles"></i>
+                <span>Pixal3D</span>
+            </div>
+
+            <div class="sidebar-section" style="margin-bottom: 1.5rem;">
+                <p style="font-size: 0.82rem; color: var(--text-dim); line-height: 1.6;">
+                    1. Upload an image and click Generate.<br>
+                    2. Click Extract GLB to export.<br>
+                    3. Download the generated GLB file.
+                </p>
+                <a href="https://ldyang694.github.io/projects/pixal3d/" target="_blank" class="btn btn-outline" style="margin-top: 1rem; padding: 0.6rem 1rem; font-size: 0.85rem;">
+                    <i data-lucide="globe" style="width: 16px;"></i>
+                    Project Page
+                </a>
+                <a href="https://huggingface.co/spaces/TencentARC/Pixal3D-Server" target="_blank" class="btn btn-outline" style="margin-top: 0.5rem; padding: 0.6rem 1rem; font-size: 0.85rem; flex-direction: column; gap: 0.25rem;">
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                        <i data-lucide="server" style="width: 16px;"></i>
+                        Free Deploy Server
+                    </div>
+                    <div style="display: flex; gap: 0.35rem;">
+                        <span style="background: linear-gradient(135deg, var(--accent), #059669); color: white; font-size: 0.55rem; font-weight: 700; padding: 0.1rem 0.45rem; border-radius: 4px; line-height: 1.4;">★ Recommended</span>
+                        <span style="background: linear-gradient(135deg, var(--primary), var(--primary-dark)); color: white; font-size: 0.55rem; font-weight: 700; padding: 0.1rem 0.45rem; border-radius: 4px; line-height: 1.4;">Free</span>
+                    </div>
+                </a>
+            </div>
+
+            <div class="sidebar-section">
+                <h3><i data-lucide="sliders-horizontal" style="width: 14px;"></i> Base Settings</h3>
+                <div class="control-group">
+                    <div class="input-wrapper">
+                        <label>Target Resolution</label>
+                        <select id="resolution">
+                            <option value="1024">1024 (Balanced)</option>
+                            <option value="1536">1536 (High Quality)</option>
+                        </select>
+                    </div>
+                    <div class="input-wrapper">
+                        <label>Generation Seed <span>#<span id="seed-display">42</span></span></label>
+                        <div style="display: flex; gap: 0.5rem;">
+                            <input type="number" id="seed" value="42" style="flex: 1;">
+                            <button class="btn btn-outline" style="width: 50px; padding: 0;" onclick="randomizeSeed()">
+                                <i data-lucide="rotate-cw" style="width: 16px;"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="input-wrapper">
+                        <p style="font-size: 0.72rem; color: var(--text-dim); line-height: 1.5; opacity: 0.7;">
+                            Note: FOV is auto-estimated via MoGe-2.<br>
+                            If distortion occurs, try manual FOV.<br>
+                            Default <b style="color: var(--primary);">0.2 rad</b> generally works well.
+                        </p>
+                    </div>
+                    <div class="input-wrapper">
+                        <label>
+                            Camera FOV
+                            <span style="display: flex; align-items: center; gap: 0.35rem;">
+                                <input type="checkbox" id="fov-auto" checked style="accent-color: var(--primary); width: 14px; height: 14px; cursor: pointer;">
+                                <span style="font-size: 0.75rem; color: var(--text-dim); cursor: pointer;" onclick="document.getElementById('fov-auto').click()">Auto</span>
+                            </span>
+                        </label>
+                        <div style="display: flex; gap: 0.5rem;">
+                            <input type="number" id="manual-fov" value="0.2" min="0.0175" max="2.9671" step="0.01" disabled style="opacity: 0.4; flex: 1;">
+                            <select id="fov-unit" disabled style="opacity: 0.4; width: 70px; padding: 0.5rem;">
+                                <option value="deg">deg</option>
+                                <option value="rad" selected>rad</option>
+                            </select>
+                        </div>
+                        <p id="fov-hint" style="font-size: 0.65rem; color: var(--text-dim); margin-top: 0.15rem;">
+                            Manual FOV in radians (0.02–2.97 rad)
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="sidebar-section" id="render-controls" style="display: none;">
+                <h3><i data-lucide="palette" style="width: 14px;"></i> Render Mode For Preview</h3>
+                <div class="mode-grid" id="mode-grid">
+                    <!-- Tabs injected via JS -->
+                </div>
+            </div>
+
+            <div class="sidebar-section">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; cursor: pointer;" onclick="toggleAdvanced()">
+                    <h3 style="margin-bottom: 0;"><i data-lucide="shield-alert" style="width: 14px;"></i> Advanced Engine</h3>
+                    <i data-lucide="chevron-down" id="adv-chevron" style="width: 16px; transition: transform 0.3s;"></i>
+                </div>
+                <div id="advanced-settings" style="display: none; padding-top: 1rem; border-top: 1px solid var(--border);">
+                    <div class="control-group">
+                        <div class="input-wrapper">
+                            <label>SS Guidance <span><span id="ss_gs_val">7.5</span></span></label>
+                            <input type="range" id="ss_gs" min="1" max="10" step="0.1" value="7.5" oninput="updateVal('ss_gs')">
+                        </div>
+                        <div class="input-wrapper">
+                            <label>SS Sampling <span><span id="ss_steps_val">12</span></span></label>
+                            <input type="range" id="ss_steps" min="1" max="50" step="1" value="12" oninput="updateVal('ss_steps')">
+                        </div>
+                        <div class="input-wrapper">
+                            <label>Shape Guidance <span><span id="shape_gs_val">7.5</span></span></label>
+                            <input type="range" id="shape_gs" min="1" max="10" step="0.1" value="7.5" oninput="updateVal('shape_gs')">
+                        </div>
+                        <hr style="border: 0; border-top: 1px solid var(--border); margin: 0.5rem 0;">
+                        <div class="input-wrapper">
+                            <label>Decimation <span><span id="decim_val">1M</span></span></label>
+                            <input type="range" id="decimation" min="100000" max="1000000" step="10000" value="1000000" oninput="updateVal('decimation')">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="btn-stack">
+                <button class="btn btn-primary" id="generate-btn" disabled>
+                    <i data-lucide="zap"></i>
+                    Start Generation
+                </button>
+                <button class="btn btn-outline" id="extract-btn" style="display: none;">
+                    <i data-lucide="box"></i>
+                    Extract Mesh (GLB)
+                </button>
+                <button class="btn btn-outline" id="download-btn" style="display: none; background: rgba(16, 185, 129, 0.1); border-color: var(--accent); color: var(--accent);">
+                    <i data-lucide="download"></i>
+                    Download Asset
+                </button>
+            </div>
+        </div>
+
+        <!-- Right: Main Area -->
+        <div class="main-content">
+            <header>
+                <div class="steps-nav">
+                    <div class="step-item active" id="step-1">
+                        <i data-lucide="image"></i>
+                        <span>1. SOURCE</span>
+                    </div>
+                    <div class="step-item" id="step-2">
+                        <i data-lucide="view"></i>
+                        <span>2. PREVIEW</span>
+                    </div>
+                    <div class="step-item" id="step-3">
+                        <i data-lucide="box"></i>
+                        <span>3. RESULT</span>
+                    </div>
+                </div>
+                <button class="btn btn-outline" id="clear-btn" title="Clear all & restart" style="width: 34px; height: 34px; padding: 0; border-radius: 50%; display: flex; align-items: center; justify-content: center; border-color: rgba(248,113,113,0.3);">
+                    <i data-lucide="trash-2" style="width: 16px; height: 16px; color: #f87171;"></i>
+                </button>
+            </header>
+
+            <div class="workspace">
+                <!-- Panel 1: Upload -->
+                <div class="panel active" id="panel-1">
+                    <div class="upload-card" id="drop-zone" onclick="document.getElementById('file-input').click()">
+                        <input type="file" id="file-input" hidden accept="image/*">
+                        <div class="upload-hint" id="upload-hint">
+                            <i data-lucide="cloud-upload"></i>
+                            <h2 style="font-family: 'Outfit'; margin-top: 1rem;">Upload Reference</h2>
+                            <p>Drag and drop any image, or click to browse</p>
+                        </div>
+                        <img id="source-preview" src="" alt="Source">
+                    </div>
+                </div>
+
+                <!-- Panel 2: Multi-frame Preview -->
+                <div class="panel" id="panel-2">
+                    <img id="ref-thumb-2" class="ref-thumbnail" src="" alt="Reference">
+                    <div class="viewer-wrapper">
+                        <div id="frame-container">
+                            <!-- Injected via JS -->
+                        </div>
+                        <div class="viewer-overlay">
+                            <i data-lucide="move-horizontal" style="color: var(--primary); width: 20px;"></i>
+                            <input type="range" id="angle-slider" min="0" max="7" value="0" step="1" style="flex: 1;">
+                            <div style="font-family: monospace; font-weight: 700; color: var(--primary); font-size: 0.8rem;">
+                                VIEW_ANGLE: <span id="angle-display">00</span>°
+                            </div>
+                            <div id="camera-info" style="font-family: monospace; font-size: 0.75rem; color: var(--text-dim); display: none; border-left: 1px solid var(--border); padding-left: 1rem;">
+                                <span>FOV: <span id="fov-display" style="color: var(--accent);">--</span> rad</span>
+                                <span style="margin-left: 0.75rem;">Dist: <span id="dist-display" style="color: var(--accent);">--</span></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Panel 3: 3D Result -->
+                <div class="panel" id="panel-3">
+                    <img id="ref-thumb-3" class="ref-thumbnail" src="" alt="Reference">
+                    <div class="viewer-wrapper">
+                        <model-viewer id="main-3d-viewer" 
+                            camera-controls 
+                            auto-rotate 
+                            camera-orbit="-180deg 90deg auto"
+                            shadow-intensity="1.5" 
+                            environment-image="neutral" 
+                            exposure="1.2">
+                            <div slot="progress-bar" style="background: var(--primary); height: 4px;"></div>
+                        </model-viewer>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Footer: Examples -->
+            <div class="examples-drawer">
+                <div class="examples-header">
+                    <h4 style="font-size: 0.75rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.1em;">Sample Gallery</h4>
+                </div>
+                <div class="examples-grid" id="examples-grid">
+                    <!-- Injected via JS -->
+                </div>
+                <div class="gallery-slider-wrap">
+                    <input type="range" id="gallery-slider" class="gallery-slider" min="0" max="100" value="0">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="loading-overlay" id="loading-overlay">
+        <div class="loader-ring"></div>
+        <div style="text-align: center; width: 100%; max-width: 500px; padding: 0 2rem;">
+            <!-- Progress stages -->
+            <div id="progress-stages" style="display: none; text-align: left;">
+                <div class="progress-stage" id="progress-stage-item" style="margin-bottom: 1rem;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem;">
+                        <span id="progress-stage-name" style="font-size: 0.85rem; font-weight: 600; color: var(--primary);">Initializing...</span>
+                        <span id="progress-step-text" style="font-size: 0.75rem; color: var(--text-dim); font-family: monospace;">0/0</span>
+                    </div>
+                    <div style="width: 100%; height: 6px; background: var(--border); border-radius: 3px; overflow: hidden;">
+                        <div id="progress-bar-fill" style="width: 0%; height: 100%; background: linear-gradient(90deg, var(--primary), var(--accent)); border-radius: 3px; transition: width 0.3s ease;"></div>
+                    </div>
+                </div>
+                <!-- Stage history log -->
+                <div id="progress-log" style="font-size: 0.75rem; color: var(--text-dim); line-height: 1.8; max-height: 180px; overflow-y: auto; margin-top: 1rem; padding-top: 0.5rem; border-top: 1px solid var(--border);"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="lightbox-overlay" id="lightbox-overlay" onclick="closeLightbox()">
+        <img id="lightbox-img" src="" alt="Enlarged">
+    </div>
+
+    <div class="status-toast" id="toast">Generation started!</div>
+
+    <script type="module">
+        import { Client, handle_file } from "https://cdn.jsdelivr.net/npm/@gradio/client/dist/index.min.js";
+
+        let client;
+        let currentFile = null;
+        let preprocessedFile = null;
+        let isPreprocessing = false;
+        let generationResult = null;
+        let currentMode = "shaded_forest";
+        let currentFrame = 0;
+        const sessionId = crypto.randomUUID();
+        let currentStep = 1;
+
+        const MODES = [
+            { name: "Normal", key: "normal" },
+            { name: "Clay", key: "clay" },
+            { name: "Color", key: "base_color" },
+            { name: "Forest", key: "shaded_forest" },
+            { name: "Sunset", key: "shaded_sunset" },
+            { name: "Blue", key: "shaded_courtyard" }
+        ];
+
+        async function init() {
+            lucide.createIcons();
+            // Set default resolution based on server config (LOW_VRAM → 1024, else 1536)
+            try {
+                const cfgResp = await fetch('/app_config');
+                const cfg = await cfgResp.json();
+                document.getElementById('resolution').value = cfg.low_vram ? '1024' : '1536';
+            } catch (e) {
+                document.getElementById('resolution').value = '1536';
+            }
+            try {
+                client = await Client.connect(window.location.origin);
+                setupUI();
+                loadSamples();
+            } catch (err) {
+                console.error("Connection error:", err);
+                showToast("Connection failed. Try refreshing.");
+            }
+        }
+
+        function setupUI() {
+            // File Handling
+            const dropZone = document.getElementById('drop-zone');
+            const fileInput = document.getElementById('file-input');
+
+            dropZone.ondragover = (e) => { e.preventDefault(); dropZone.style.borderColor = 'var(--primary)'; };
+            dropZone.ondragleave = () => dropZone.style.borderColor = 'var(--border)';
+            dropZone.ondrop = (e) => {
+                e.preventDefault();
+                if (e.dataTransfer.files.length) handleImageUpload(e.dataTransfer.files[0]);
+            };
+            fileInput.onchange = (e) => { if (e.target.files.length) handleImageUpload(e.target.files[0]); };
+
+            // Buttons
+            document.getElementById('generate-btn').onclick = startGeneration;
+            document.getElementById('extract-btn').onclick = startExtraction;
+            document.getElementById('download-btn').onclick = () => {
+                const link = document.createElement('a');
+                link.href = document.getElementById('main-3d-viewer').src;
+                link.download = "pixal3d_export.glb";
+                link.click();
+            };
+
+            // Clear button
+            document.getElementById('clear-btn').onclick = () => {
+                // Reset state
+                currentFile = null;
+                generationResult = null;
+                currentFrame = 0;
+                currentMode = "shaded_forest";
+
+                // Reset source preview
+                document.getElementById('source-preview').src = '';
+                document.getElementById('source-preview').style.display = 'none';
+                document.getElementById('upload-hint').style.display = 'flex';
+                document.getElementById('file-input').value = '';
+
+                // Reset generate button
+                document.getElementById('generate-btn').disabled = true;
+
+                // Reset preview frames
+                document.getElementById('frame-container').innerHTML = '';
+                document.getElementById('angle-slider').value = 0;
+                document.getElementById('angle-display').textContent = '00';
+
+                // Reset 3D viewer
+                resetModelViewer();
+
+                // Reset thumbnails
+                document.getElementById('ref-thumb-2').style.display = 'none';
+                document.getElementById('ref-thumb-2').src = '';
+                document.getElementById('ref-thumb-3').style.display = 'none';
+                document.getElementById('ref-thumb-3').src = '';
+
+                // Reset mode tabs
+                document.querySelectorAll('.mode-tab').forEach(t => {
+                    t.classList.toggle('active', t.textContent === 'Forest');
+                });
+
+                // Go back to step 1
+                setStep(1);
+                showToast("Cleared. Ready for new upload.");
+            };
+
+            // Step navigation click
+            document.getElementById('step-1').onclick = () => setStep(1);
+            document.getElementById('step-2').onclick = () => { if (generationResult) setStep(2); };
+            document.getElementById('step-3').onclick = () => { if (document.getElementById('main-3d-viewer').src) setStep(3); };
+
+            // Slider
+            document.getElementById('angle-slider').oninput = (e) => {
+                currentFrame = parseInt(e.target.value);
+                document.getElementById('angle-display').textContent = (currentFrame * 22.5).toFixed(0).padStart(2, '0');
+                updateFrame();
+            };
+
+            // FOV auto toggle & unit switch
+            const fovAutoCheck = document.getElementById('fov-auto');
+            const fovInput = document.getElementById('manual-fov');
+            const fovUnit = document.getElementById('fov-unit');
+            const fovHint = document.getElementById('fov-hint');
+
+            function updateFovEnabled() {
+                const manual = !fovAutoCheck.checked;
+                fovInput.disabled = !manual;
+                fovUnit.disabled = !manual;
+                fovInput.style.opacity = manual ? '1' : '0.4';
+                fovUnit.style.opacity = manual ? '1' : '0.4';
+            }
+
+            fovAutoCheck.onchange = updateFovEnabled;
+
+            fovUnit.onchange = () => {
+                const val = parseFloat(fovInput.value);
+                if (isNaN(val)) return;
+                if (fovUnit.value === 'rad') {
+                    // deg -> rad
+                    fovInput.value = (val * Math.PI / 180).toFixed(4);
+                    fovInput.min = '0.0175'; fovInput.max = '2.9671'; fovInput.step = '0.01';
+                    fovHint.textContent = 'Manual FOV in radians (0.02–2.97 rad)';
+                } else {
+                    // rad -> deg
+                    fovInput.value = (val * 180 / Math.PI).toFixed(1);
+                    fovInput.min = '1'; fovInput.max = '170'; fovInput.step = '0.5';
+                    fovHint.textContent = 'Uncheck "Auto" to manually set FOV (1°–170°)';
+                }
+            };
+
+            // Mode Grid
+            const grid = document.getElementById('mode-grid');
+            MODES.forEach(m => {
+                const tab = document.createElement('div');
+                tab.className = `mode-tab ${m.key === currentMode ? 'active' : ''}`;
+                tab.textContent = m.name;
+                tab.onclick = () => {
+                    currentMode = m.key;
+                    document.querySelectorAll('.mode-tab').forEach(t => t.classList.remove('active'));
+                    tab.classList.add('active');
+                    updateFrame();
+                };
+                grid.appendChild(tab);
+            });
+        }
+
+        async function handleImageUpload(file) {
+            currentFile = file;
+            preprocessedFile = null;
+            isPreprocessing = true;
+            document.getElementById('generate-btn').disabled = true;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const img = document.getElementById('source-preview');
+                const hint = document.getElementById('upload-hint');
+                img.src = e.target.result;
+                img.style.display = 'block';
+                hint.style.display = 'none';
+                setStep(1);
+            };
+            reader.readAsDataURL(file);
+            
+            // Call preprocess and update with segmented result
+            try {
+                const result = await client.predict("/preprocess", { image: handle_file(file) });
+                const processedUrl = result.data[0].url;
+                if (processedUrl) {
+                    preprocessedFile = processedUrl;
+                    document.getElementById('source-preview').src = processedUrl;
+                    document.getElementById('ref-thumb-2').src = processedUrl;
+                    document.getElementById('ref-thumb-2').style.display = 'block';
+                    document.getElementById('ref-thumb-3').src = processedUrl;
+                    document.getElementById('ref-thumb-3').style.display = 'block';
+                }
+            } catch (err) {
+                console.error("Preprocess failed:", err);
+            }
+            isPreprocessing = false;
+            document.getElementById('generate-btn').disabled = false;
+        }
+
+        function setStep(num) {
+            currentStep = num;
+            document.querySelectorAll('.step-item').forEach((item, i) => {
+                item.className = 'step-item';
+                if (i + 1 < num) item.classList.add('completed');
+                if (i + 1 === num) item.classList.add('active');
+            });
+            document.querySelectorAll('.panel').forEach((p, i) => {
+                p.classList.toggle('active', i + 1 === num);
+            });
+
+            // Toggle side controls based on step
+            document.getElementById('render-controls').style.display = (num >= 2) ? 'block' : 'none';
+            document.getElementById('extract-btn').style.display = (num === 2) ? 'flex' : 'none';
+            document.getElementById('download-btn').style.display = (num === 3) ? 'flex' : 'none';
+        }
+
+        async function startGeneration() {
+            if (!currentFile) return;
+
+            // Clear old preview frames and 3D result
+            generationResult = null;
+            document.getElementById('frame-container').innerHTML = '';
+            document.getElementById('angle-slider').value = 0;
+            document.getElementById('angle-display').textContent = '00';
+            resetModelViewer();
+            document.getElementById('extract-btn').style.display = 'none';
+            document.getElementById('download-btn').style.display = 'none';
+
+            // Stay on step 1 during generation
+            setStep(1);
+
+            showLoading();
+            startProgressListener();
+            try {
+                const params = {
+                    image: preprocessedFile ? handle_file(preprocessedFile) : handle_file(currentFile),
+                    seed: parseInt(document.getElementById('seed').value),
+                    resolution: parseInt(document.getElementById('resolution').value),
+                    ss_guidance_strength: parseFloat(document.getElementById('ss_gs').value),
+                    ss_sampling_steps: parseInt(document.getElementById('ss_steps').value),
+                    shape_slat_guidance_strength: parseFloat(document.getElementById('shape_gs').value),
+                    manual_fov: (() => {
+                        if (document.getElementById('fov-auto').checked) return -1.0;
+                        const v = parseFloat(document.getElementById('manual-fov').value);
+                        return document.getElementById('fov-unit').value === 'rad' ? v * 180 / Math.PI : v;
+                    })(),
+                    session_id: sessionId
+                };
+
+                const result = await client.predict("/generate_3d", params);
+                generationResult = result.data[0];
+                
+                stopProgressListener();
+                populateFrames(generationResult.render_paths);
+
+                // Display camera info
+                if (generationResult.camera_angle_x != null) {
+                    document.getElementById('fov-display').textContent = generationResult.camera_angle_x.toFixed(3);
+                    document.getElementById('dist-display').textContent = generationResult.distance.toFixed(3);
+                    document.getElementById('camera-info').style.display = 'inline';
+                }
+
+                setStep(2);
+                hideLoading();
+                showToast("Generation complete!");
+            } catch (err) {
+                console.error(err);
+                stopProgressListener();
+                hideLoading();
+                showToast("An error occurred during synthesis.");
+            }
+        }
+
+        // Progress Polling
+        let progressInterval = null;
+        let lastStageName = "";
+        
+        function startProgressListener() {
+            // Show progress UI
+            document.getElementById('progress-stages').style.display = 'block';
+            document.getElementById('progress-log').innerHTML = '';
+            document.getElementById('progress-stage-name').textContent = 'Initializing...';
+            document.getElementById('progress-step-text').textContent = '';
+            document.getElementById('progress-bar-fill').style.width = '0%';
+            lastStageName = "";
+
+            // Poll every 500ms instead of SSE
+            progressInterval = setInterval(async () => {
+                try {
+                    const resp = await fetch(`/progress?session_id=${sessionId}`);
+                    if (!resp.ok) return;
+                    const data = await resp.json();
+                    if (data.done) {
+                        stopProgressListener();
+                        return;
+                    }
+                    updateProgressUI(data);
+                } catch (e) {}
+            }, 500);
+        }
+
+        function stopProgressListener() {
+            if (progressInterval) {
+                clearInterval(progressInterval);
+                progressInterval = null;
+            }
+        }
+
+        function updateProgressUI(data) {
+            const stageName = data.stage || '';
+            const step = data.step || 0;
+            const total = data.total || 0;
+
+            // If stage changed, log the previous one as completed
+            if (stageName && stageName !== lastStageName) {
+                if (lastStageName) {
+                    const logEl = document.getElementById('progress-log');
+                    logEl.innerHTML += `<div style="display:flex;align-items:center;gap:0.4rem;"><span style="color:var(--accent);">✓</span> ${lastStageName}</div>`;
+                    logEl.scrollTop = logEl.scrollHeight;
+                }
+                lastStageName = stageName;
+            }
+
+            // Update current stage display
+            document.getElementById('progress-stage-name').textContent = stageName;
+            if (total > 0) {
+                document.getElementById('progress-step-text').textContent = `${step}/${total}`;
+                const pct = Math.min(100, (step / total) * 100);
+                document.getElementById('progress-bar-fill').style.width = pct + '%';
+            } else {
+                document.getElementById('progress-step-text').textContent = '';
+                document.getElementById('progress-bar-fill').style.width = '0%';
+            }
+        }
+
+        function populateFrames(renderPaths) {
+            const container = document.getElementById('frame-container');
+            container.innerHTML = '';
+            Object.entries(renderPaths).forEach(([mode, files]) => {
+                files.forEach((file, i) => {
+                    const img = document.createElement('img');
+                    // Try the URL from Gradio, fallback to our mounted /tmp route if it's an absolute local path
+                    let url = file.url;
+                    if (!url && file.path) {
+                        const filename = file.path.split(/[\\/]/).pop();
+                        url = `/tmp/${filename}`;
+                    }
+                    img.src = url;
+                    img.className = 'preview-frame';
+                    img.id = `frame-${mode}-${i}`;
+                    img.onerror = () => {
+                        // Fallback attempt if the first URL fails
+                        const filename = file.path ? file.path.split(/[\\/]/).pop() : null;
+                        if (filename && !img.src.includes('/tmp/')) {
+                            img.src = `/tmp/${filename}`;
+                        }
+                    };
+                    container.appendChild(img);
+                });
+            });
+            updateFrame();
+        }
+
+        function updateFrame() {
+            document.querySelectorAll('.preview-frame').forEach(f => f.classList.remove('active'));
+            const active = document.getElementById(`frame-${currentMode}-${currentFrame}`);
+            if (active) active.classList.add('active');
+        }
+
+        // Destroy and recreate model-viewer to fully purge old mesh from WebGL
+        function resetModelViewer() {
+            const container = document.querySelector('#panel-3 .viewer-wrapper');
+            const old = document.getElementById('main-3d-viewer');
+            if (old) old.remove();
+            const mv = document.createElement('model-viewer');
+            mv.id = 'main-3d-viewer';
+            mv.setAttribute('camera-controls', '');
+            mv.setAttribute('auto-rotate', '');
+            mv.setAttribute('camera-orbit', '-180deg 90deg auto');
+            mv.setAttribute('shadow-intensity', '1.5');
+            mv.setAttribute('environment-image', 'neutral');
+            mv.setAttribute('exposure', '1.2');
+            mv.style.width = '100%';
+            mv.style.height = '100%';
+            mv.style.background = 'radial-gradient(circle at 50% 50%, #1a2235 0%, #0b0f1a 100%)';
+            mv.style.visibility = 'hidden';
+            mv.innerHTML = '<div slot="progress-bar" style="background: var(--primary); height: 4px;"></div>';
+            container.appendChild(mv);
+            return mv;
+        }
+
+        async function startExtraction() {
+            if (!generationResult) return;
+
+            // Switch away from panel-3 immediately so user won't see stale mesh
+            if (currentStep === 3) setStep(2);
+
+            // Destroy old model-viewer and create a fresh one (purges WebGL scene completely)
+            const viewer = resetModelViewer();
+
+            showLoading();
+            startProgressListener();
+            try {
+                const params = {
+                    state_path: generationResult.state_path,
+                    decimation_target: parseInt(document.getElementById('decimation').value),
+                    texture_size: 4096,
+                    session_id: sessionId
+                };
+
+                const result = await client.predict("/extract_glb_api", params);
+                const glbUrl = result.data[0].url;
+
+                stopProgressListener();
+
+                // Wait for the new model to fully load before revealing (with timeout fallback)
+                await new Promise((resolve) => {
+                    let settled = false;
+                    const onLoad = () => {
+                        if (settled) return;
+                        settled = true;
+                        viewer.removeEventListener('load', onLoad);
+                        clearTimeout(timer);
+                        resolve();
+                    };
+                    // Timeout fallback: if load event never fires (e.g. model-viewer error),
+                    // resolve anyway after 30s to avoid permanent hang
+                    const timer = setTimeout(() => {
+                        if (settled) return;
+                        settled = true;
+                        viewer.removeEventListener('load', onLoad);
+                        resolve();
+                    }, 30000);
+                    viewer.addEventListener('load', onLoad);
+                    viewer.src = glbUrl;
+                });
+
+                viewer.style.visibility = 'visible';
+                setStep(3);
+                hideLoading();
+                showToast("3D Asset ready!");
+            } catch (err) {
+                console.error(err);
+                stopProgressListener();
+                viewer.style.visibility = 'visible';
+                hideLoading();
+                showToast("Extraction failed.");
+            }
+        }
+
+        function loadSamples() {
+            const grid = document.getElementById('examples-grid');
+            const samples = [
+                'assets/images/0_img.png',
+                'assets/images/1_img.png',
+                'assets/images/3_img.webp',
+                'assets/images/4_img.png',
+                'assets/images/5_img.webp',
+                'assets/images/6_img.png',
+                'assets/images/7_img.png',
+                'assets/images/9_img.png',
+                'assets/images/10_img.webp',
+                'assets/images/11_img.png',
+                'assets/images/12_img.png',
+                'assets/images/17_img.png',
+                'assets/images/21_img.png',
+                'assets/images/s_13_img.jpg',
+                'assets/images/s_14_img.jpg',
+                'assets/images/s_15_img.png',
+                'assets/images/s_16_img.png',
+                'assets/images/s_18_img.png',
+                'assets/images/s_20_img.webp',
+                'assets/images/musicman.png',
+                'assets/images/pizza.png',
+                'assets/images/sculpt.png',
+                'assets/images/treehouse.png',
+                'assets/images/warship.png',
+                'assets/images/5c80e5e03a3b60b6f03eaf555ba1dafc0e4230c472d7e8c8e2c5ca0a0dfcef10.webp',
+                'assets/images/c9340e744541f310bf89838f652602961d3e5950b31cd349bcbfc7e59e15cd2e.webp',
+                'assets/images/f94e2b76494ce2cf1874611273e5fb3d76b395793bb5647492fa85c2ce0a248b.webp'
+            ];
+
+            // Create track element
+            const track = document.createElement('div');
+            track.className = 'examples-track';
+
+            function createItem(path) {
+                const div = document.createElement('div');
+                div.className = 'example-item';
+                div.innerHTML = `<img src="${path}" draggable="false">`;
+                div.onclick = async () => {
+                    showLoading();
+                    const res = await fetch(path);
+                    const blob = await res.blob();
+                    const ext = path.split('.').pop().toLowerCase();
+                    const mimeMap = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp' };
+                    const mime = mimeMap[ext] || 'image/png';
+                    const file = new File([blob], path.split('/').pop(), { type: mime });
+                    await handleImageUpload(file);
+                    hideLoading();
+                };
+                return div;
+            }
+
+            samples.forEach(path => track.appendChild(createItem(path)));
+            samples.forEach(path => track.appendChild(createItem(path)));
+
+            grid.appendChild(track);
+        }
+
+        // Helpers
+        window.openLightbox = (src) => {
+            const lb = document.getElementById('lightbox-overlay');
+            document.getElementById('lightbox-img').src = src;
+            lb.style.display = 'flex';
+        };
+
+        window.closeLightbox = () => {
+            document.getElementById('lightbox-overlay').style.display = 'none';
+        };
+
+        // Thumbnail click to enlarge
+        document.getElementById('ref-thumb-2').onclick = (e) => { e.stopPropagation(); openLightbox(e.target.src); };
+        document.getElementById('ref-thumb-3').onclick = (e) => { e.stopPropagation(); openLightbox(e.target.src); };
+
+        window.toggleAdvanced = () => {
+            const el = document.getElementById('advanced-settings');
+            const chev = document.getElementById('adv-chevron');
+            const isOpen = el.style.display === 'block';
+            el.style.display = isOpen ? 'none' : 'block';
+            chev.style.transform = isOpen ? 'rotate(0deg)' : 'rotate(180deg)';
+        };
+
+        window.updateVal = (id) => {
+            const val = document.getElementById(id).value;
+            let label = val;
+            if (id === 'decimation') label = (val/1000000).toFixed(1) + 'M';
+            document.getElementById(id + '_val').textContent = label;
+        };
+
+        window.randomizeSeed = () => {
+            const s = Math.floor(Math.random() * 999999);
+            document.getElementById('seed').value = s;
+            document.getElementById('seed-display').textContent = s;
+        };
+
+        function showLoading() {
+            document.getElementById('loading-overlay').style.display = 'flex';
+        }
+
+        function hideLoading() {
+            document.getElementById('loading-overlay').style.display = 'none';
+            document.getElementById('progress-stages').style.display = 'none';
+            document.getElementById('progress-log').innerHTML = '';
+            document.getElementById('progress-bar-fill').style.width = '0%';
+        }
+
+        function showToast(msg) {
+            const t = document.getElementById('toast');
+            t.textContent = msg;
+            t.style.display = 'block';
+            setTimeout(() => t.style.display = 'none', 3000);
+        }
+
+        // Gallery slider & scroll sync with auto-scroll
+        const exGrid = document.getElementById('examples-grid');
+        const gallerySlider = document.getElementById('gallery-slider');
+        let isSliderDragging = false;
+        let autoScrollPaused = false;
+        let pauseTimeout = null;
+        const AUTO_SCROLL_SPEED = 0.5; // px per frame
+
+        function updateSliderFromScroll() {
+            if (isSliderDragging) return;
+            const maxScroll = exGrid.scrollWidth - exGrid.clientWidth;
+            if (maxScroll <= 0) {
+                gallerySlider.value = 0;
+                return;
+            }
+            gallerySlider.value = (exGrid.scrollLeft / maxScroll) * 100;
+        }
+
+        exGrid.addEventListener('scroll', updateSliderFromScroll);
+
+        gallerySlider.addEventListener('input', () => {
+            isSliderDragging = true;
+            autoScrollPaused = true;
+            const maxScroll = exGrid.scrollWidth - exGrid.clientWidth;
+            exGrid.scrollTo({ left: (gallerySlider.value / 100) * maxScroll, behavior: 'auto' });
+        });
+        gallerySlider.addEventListener('pointerup', () => { isSliderDragging = false; resumeAutoScrollLater(); });
+        gallerySlider.addEventListener('change', () => { isSliderDragging = false; resumeAutoScrollLater(); });
+
+        // Mouse wheel horizontal scroll
+        exGrid.addEventListener('wheel', (e) => {
+            if (Math.abs(e.deltaY) > 0) {
+                e.preventDefault();
+                exGrid.scrollLeft += e.deltaY;
+                autoScrollPaused = true;
+                resumeAutoScrollLater();
+            }
+        }, { passive: false });
+
+        // Pause on hover
+        exGrid.addEventListener('mouseenter', () => { autoScrollPaused = true; });
+        exGrid.addEventListener('mouseleave', () => { resumeAutoScrollLater(500); });
+
+        function resumeAutoScrollLater(delay = 2000) {
+            clearTimeout(pauseTimeout);
+            pauseTimeout = setTimeout(() => { autoScrollPaused = false; }, delay);
+        }
+
+        // Auto-scroll loop via requestAnimationFrame
+        function autoScrollLoop() {
+            if (!autoScrollPaused) {
+                const maxScroll = exGrid.scrollWidth - exGrid.clientWidth;
+                if (maxScroll > 0) {
+                    exGrid.scrollLeft += AUTO_SCROLL_SPEED;
+                    // Loop back to start
+                    if (exGrid.scrollLeft >= maxScroll) {
+                        exGrid.scrollLeft = 0;
+                    }
+                }
+            }
+            requestAnimationFrame(autoScrollLoop);
+        }
+        requestAnimationFrame(autoScrollLoop);
+
+        init();
+    </script>
+</body>
+</html>

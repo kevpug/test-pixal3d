@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Output files
+output.glb
+autotune_cache.json
+
+# Virtual environment
+venv/
+.venv/
+env/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+tmp
+
+# ROCm/Windows port
+.venv-*/
+outputs/
+*.glb
+!assets/**/*.glb
