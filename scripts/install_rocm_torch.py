@@ -193,7 +193,55 @@ def detect_arch() -> Optional[str]:
     return arch
 
 
-def install_new(arch: str, dry_run: bool, audio: bool) -> int:
+# Anything that ships or loads a HIP runtime. Leaving an old set installed
+# next to a new one puts two copies of amdhip64 and friends on the search
+# path, and whichever the loader picks will not match the rest.
+CONFLICTING_PREFIXES = ('torch', 'torchvision', 'torchaudio', 'rocm', 'amd-',
+                        'amd_', 'pytorch-triton-rocm', 'triton')
+
+
+def installed_conflicts() -> List[str]:
+    try:
+        from importlib.metadata import distributions
+    except Exception:
+        return []
+    names = set()
+    for dist in distributions():
+        name = (dist.metadata['Name'] or '').strip()
+        if name and name.lower().replace('_', '-').startswith(CONFLICTING_PREFIXES):
+            names.add(name)
+    return sorted(names)
+
+
+def purge(dry_run: bool) -> None:
+    """Remove any existing ROCm/torch stack before installing another."""
+    names = installed_conflicts()
+    if not names:
+        print("clean  : nothing to remove")
+        return
+    print(f"clean  : removing {len(names)} existing package(s) first")
+    for name in names:
+        print(f"           {name}")
+    cmd = [sys.executable, '-m', 'pip', 'uninstall', '-y', *names]
+    if dry_run:
+        print("         " + ' '.join(cmd))
+        return
+    subprocess.call(cmd)
+    # pip leaves the directories behind often enough to matter here.
+    try:
+        import site
+        import shutil
+        for root in site.getsitepackages():
+            for leftover in ('_rocm_sdk_core', '_rocm_sdk_devel', 'rocm_sdk'):
+                path = os.path.join(root, leftover)
+                if os.path.isdir(path):
+                    shutil.rmtree(path, ignore_errors=True)
+                    print(f"         removed leftover {leftover}")
+    except Exception:
+        pass
+
+
+def install_new(arch: str, dry_run: bool, audio: bool, clean: bool = True) -> int:
     """
     Install from AMD's current index using the per-architecture extras.
 
@@ -209,6 +257,8 @@ def install_new(arch: str, dry_run: bool, audio: bool) -> int:
            '--index-url', NEW_INDEX, '--no-warn-script-location', *packages]
     print(f"index  : {NEW_INDEX}")
     print(f"arch   : {arch}")
+    if clean:
+        purge(dry_run)
     print()
     for name in packages:
         print(f"  {name}")
@@ -217,7 +267,17 @@ def install_new(arch: str, dry_run: bool, audio: bool) -> int:
         print(' '.join(cmd))
         return 0
     print("Installing (this downloads a few GB) ...")
-    return subprocess.call(cmd)
+    result = subprocess.call(cmd)
+    if result == 0:
+        print()
+        print("Installed:")
+        for name in installed_conflicts():
+            try:
+                from importlib.metadata import version
+                print(f"  {name:34} {version(name)}")
+            except Exception:
+                print(f"  {name}")
+    return result
 
 
 def detect_family() -> Optional[str]:
@@ -251,6 +311,9 @@ def main() -> int:
     parser.add_argument('--arch', default=None,
                         help="gfx target to install for, e.g. gfx1031. "
                              "Default: detected from the discrete adapter.")
+    parser.add_argument('--no-clean', action='store_true',
+                        help="Do not uninstall the existing torch/ROCm packages first. "
+                             "Mixing two ROCm stacks in one environment crashes.")
     parser.add_argument('--legacy', action='store_true',
                         help="Use the old per-family index instead of AMD's current "
                              "one. The gfx103X-dgpu bundle there crashes on gfx1031.")
@@ -272,7 +335,8 @@ def main() -> int:
     if not args.legacy and not args.list and not cross:
         arch = args.arch or detect_arch()
         if arch:
-            return install_new(arch, args.dry_run, args.audio)
+            return install_new(arch, args.dry_run, args.audio,
+                               clean=not args.no_clean)
         print("Could not identify the gfx target from the adapter list.")
         print("Pass it explicitly, e.g. --arch gfx1031, or use --legacy.")
         return 1

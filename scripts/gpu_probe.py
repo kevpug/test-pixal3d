@@ -21,6 +21,7 @@ actual diagnosis, because Windows encodes the reason in it.
 
 import argparse
 import os
+import re
 import subprocess
 import sys
 
@@ -294,7 +295,28 @@ def report_environment() -> None:
             print()
             print(f"  MISMATCH: build dates {sorted(stamps)} are not all the same.")
             print("  Reinstall one consistent set:")
-            print("    python scripts\\install_rocm_torch.py --rocm-version <one build>")
+            print("    python scripts\\install_rocm_torch.py")
+
+        # Two ROCm generations in one environment puts two copies of the HIP
+        # runtime on the search path, and the loader picks one arbitrarily.
+        series = set()
+        for name, value in rows:
+            match = re.search(r'rocm(\d+)\.(\d+)', value)
+            if match:
+                series.add(f"{match.group(1)}.{match.group(2)}")
+            elif name.lower().startswith(('rocm', 'amd-', 'amd_')):
+                plain = re.match(r'(\d+)\.(\d+)', value)
+                if plain:
+                    series.add(f"{plain.group(1)}.{plain.group(2)}")
+        if len(series) > 1:
+            print()
+            print(f"  MIXED STACK: ROCm {sorted(series)} are both installed.")
+            print("  Two HIP runtimes on one search path is exactly what crashes")
+            print("  during enumeration. Remove both and install one cleanly:")
+            print("    python scripts\\install_rocm_torch.py")
+            print("  (it uninstalls the old set first), or start from a fresh")
+            print("  environment, which is the surest route:")
+            print("    setup_rocm_windows.bat --venv .venv-new")
     except Exception as exc:
         print(f"  could not list: {type(exc).__name__}: {exc}")
     print()
