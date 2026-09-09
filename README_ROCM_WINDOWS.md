@@ -91,6 +91,7 @@ DirectML and ROCm can coexist — put this in its own venv, which
 check_env.bat      REM torch build, GPU visibility, backends, device self-test
 gpu_probe.bat      REM where the GPU stack dies, if it does
 fix_gpu.bat        REM tries every known fix for a GPU that will not enumerate
+adopt_env.bat      REM finds a setup that already works here and reuses it
 run_tests.bat      REM checks the fallbacks against independent references
 run_benchmark.bat  REM measures this GPU and says which speed flags to use
 ```
@@ -334,9 +335,34 @@ have broken whole families
 ([ROCm/TheRock#5543](https://github.com/ROCm/TheRock/issues/5543)). Then
 install the Visual C++ Redistributable, and try a different Adrenalin driver.
 
-If none of that works, Windows ROCm on RDNA2 is simply not reliable right now,
-and the honest alternatives are dual-booting Linux (where gfx1031 works with
-`HSA_OVERRIDE_GFX_VERSION=10.3.0`) or a ZLUDA setup.
+**If ComfyUI or another app already drives this GPU but Pixal3D cannot**, the
+hardware and driver are fine and the difference is the stack. On Windows AMD
+there are three, and they are not interchangeable:
+
+| Stack | How to tell | Notes |
+|---|---|---|
+| **ROCm wheels** | `torch.version.hip` set | what Pixal3D installs |
+| **ZLUDA** | `torch.version.cuda` set, device is a Radeon | a CUDA torch plus a translation layer over the system HIP SDK |
+| **DirectML** | neither; `torch_directml` present | cannot run this pipeline |
+
+ZLUDA is common on RDNA2 precisely because the official ROCm nightlies have
+been unreliable there — which is what an access violation across several
+builds looks like. Run:
+
+```bat
+adopt_env.bat
+```
+
+It finds the interpreter that works, says which of the three it is, lists the
+exact packages behind it, and prints how to reuse it. Pixal3D supports ZLUDA;
+the usual answer is to install Pixal3D's dependencies into that environment
+and run from there, adding `--dtype float16` since ZLUDA reports no gfx target
+for `auto` to read.
+
+If nothing on the machine drives the GPU either, Windows ROCm on RDNA2 is
+simply not reliable right now, and the honest alternatives are dual-booting
+Linux (where gfx1031 works with `HSA_OVERRIDE_GFX_VERSION=10.3.0`) or setting
+up ZLUDA.
 
 **No output at all about the GPU, and `python -c "import torch;
 print(torch.cuda.device_count())"` prints nothing either** — the process is
