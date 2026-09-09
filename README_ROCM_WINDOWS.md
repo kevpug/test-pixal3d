@@ -90,6 +90,7 @@ DirectML and ROCm can coexist — put this in its own venv, which
 ```bat
 check_env.bat      REM torch build, GPU visibility, backends, device self-test
 gpu_probe.bat      REM where the GPU stack dies, if it does
+fix_gpu.bat        REM tries every known fix for a GPU that will not enumerate
 run_tests.bat      REM checks the fallbacks against independent references
 run_benchmark.bat  REM measures this GPU and says which speed flags to use
 ```
@@ -303,7 +304,22 @@ wheels do not match the torch wheel's build date. Reinstall with a pinned build:
 **`ACCESS_VIOLATION (0xC0000005)` from `gpu_probe.bat`** — the HIP runtime is
 crashing, which happens before any GPU kernel is compiled or launched, so this
 is not a missing-code-object problem. It is a version disagreement between the
-wheels, the driver, and the C++ runtime. In order:
+wheels, the driver, and the C++ runtime. Run:
+
+```bat
+fix_gpu.bat
+```
+
+It works through the whole sequence unattended, re-testing after each step and
+stopping at the first thing that works: test what is installed, sweep the HIP
+environment variables, check the Visual C++ runtime, then reinstall a ROCm
+build known to work for your GPU family, falling back through older ones.
+Anything it finds is written to `pixal3d_env.bat`, which every other `.bat`
+here picks up automatically, so the fix sticks.
+
+From step 4 it downloads several GB per attempt. `fix_gpu.bat --dry-run` shows
+what it would do first; `fix_gpu.bat --deep 4` tries more builds. The
+individual pieces are still there if you want them by hand:
 
 ```bat
 gpu_probe.bat --sweep        REM tries 13 env configurations, one process each
