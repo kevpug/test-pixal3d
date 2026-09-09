@@ -14,6 +14,7 @@ backend ``config`` modules can call it while the package is still importing.
 from typing import *
 import importlib.util
 import os
+import sys
 
 
 __all__ = [
@@ -41,6 +42,14 @@ def has_module(name: str) -> bool:
     """
     if name in _module_cache:
         return _module_cache[name]
+    # A pixal3d shim registered in sys.modules (see compat/natten.py) has a
+    # real spec so that third-party dependency checks pass, but it is not the
+    # package itself -- reporting it as present would claim a fast path that
+    # is not there.
+    injected = sys.modules.get(name)
+    if injected is not None and getattr(injected, '__pixal3d_fallback__', False):
+        _module_cache[name] = False
+        return False
     try:
         found = importlib.util.find_spec(name) is not None
     except (ImportError, ValueError, ModuleNotFoundError):

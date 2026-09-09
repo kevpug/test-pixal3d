@@ -892,6 +892,38 @@ def test_natten(device):
           _raises(lambda: na2d(q, q, q, kernel_size=(3, 3), stride=2),
                   NotImplementedError))
 
+    # Registering the shim has to satisfy the dependency check torch.hub runs
+    # over hubconf's `dependencies = ["torch", "natten"]`, which calls
+    # find_spec directly -- and find_spec raises on a module whose __spec__ is
+    # None rather than returning None.
+    import importlib.util
+    from pixal3d.compat import probe
+
+    saved = {name: sys.modules.get(name)
+             for name in ('natten', 'natten.functional')}
+    cached = probe._module_cache.pop('natten', None)
+    try:
+        natten_compat.install(verbose=False)
+        found = importlib.util.find_spec('natten')
+        check("find_spec('natten') succeeds after install", found is not None,
+              "torch.hub checks hubconf dependencies this way")
+        module = __import__('natten.functional', fromlist=['na2d_qk'])
+        check("natten.functional imports as a submodule",
+              callable(module.na2d_qk))
+        probe._module_cache.pop('natten', None)
+        check("the shim is still reported as missing, not installed",
+              not probe.has_module('natten'),
+              "otherwise check_env would claim a fast path that is not there")
+    finally:
+        for name, value in saved.items():
+            if value is None:
+                sys.modules.pop(name, None)
+            else:
+                sys.modules[name] = value
+        probe._module_cache.pop('natten', None)
+        if cached is not None:
+            probe._module_cache['natten'] = cached
+
 
 def _raises(call, exception):
     try:

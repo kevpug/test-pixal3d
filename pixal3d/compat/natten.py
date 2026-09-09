@@ -20,6 +20,7 @@ only when the real NATTEN is absent.
 """
 
 from typing import *
+import importlib.machinery
 import sys
 import types
 
@@ -214,9 +215,20 @@ def install(verbose: bool = True) -> bool:
         pass
 
     root = types.ModuleType('natten')
+    # A module built by hand has __spec__ = None, and importlib.util.find_spec
+    # raises ValueError on that rather than returning None. torch.hub checks a
+    # hubconf's declared dependencies with exactly that call, so without a real
+    # spec the shim trades one crash for another.
+    root.__spec__ = importlib.machinery.ModuleSpec('natten', loader=None,
+                                                   is_package=True)
+    root.__path__ = []
     root.__pixal3d_fallback__ = True
     root.__version__ = '0.0.0+pixal3d'
+
     functional = types.ModuleType('natten.functional')
+    functional.__spec__ = importlib.machinery.ModuleSpec('natten.functional',
+                                                         loader=None)
+    functional.__package__ = 'natten'
     functional.__pixal3d_fallback__ = True
 
     for module in (root, functional):
