@@ -65,19 +65,27 @@ WORK = ("import torch; x = torch.randn(256, 256, device='cuda');"
 
 
 def candidates():
-    """Interpreters worth asking, newest-looking first."""
+    """Interpreters worth asking. Broad, because people put ComfyUI anywhere."""
+    bases = [os.path.expanduser("~"), os.path.expanduser("~/Desktop"),
+             os.path.expanduser("~/Documents"), os.path.expanduser("~/Downloads"),
+             "C:\\", "D:\\", "E:\\", "C:\\AI", "D:\\AI", os.path.dirname(ROOT)]
+    patterns = ("ComfyUI*", "comfyui*", "*Comfy*", "stable-diffusion*", "SD*",
+                "*Zluda*", "*zluda*", "*rocm*", "*ROCm*", "A1111*", "Forge*")
     roots = []
-    for base in (os.path.expanduser("~"), os.path.expanduser("~/Desktop"),
-                 "C:\\", "D:\\", os.path.dirname(ROOT)):
-        for pattern in ("ComfyUI*", "comfyui*", "stable-diffusion*", "*Zluda*", "*rocm*"):
+    for base in bases:
+        for pattern in patterns:
             try:
                 roots.extend(glob.glob(os.path.join(base, pattern)))
+                # One level down too: C:\AI\ComfyUI-Zluda\ComfyUI and friends.
+                roots.extend(glob.glob(os.path.join(base, "*", pattern)))
             except Exception:
                 pass
     found = []
     for root in dict.fromkeys(roots):
         for rel in (r"venv\Scripts\python.exe", r".venv\Scripts\python.exe",
-                    r"python_embeded\python.exe", r"venv/bin/python"):
+                    r"python_embeded\python.exe", r"python_embedded\python.exe",
+                    r"ComfyUI\venv\Scripts\python.exe", r"env\Scripts\python.exe",
+                    r"venv/bin/python"):
             path = os.path.join(root, rel)
             if os.path.exists(path) and os.path.abspath(path) != os.path.abspath(sys.executable):
                 found.append(path)
