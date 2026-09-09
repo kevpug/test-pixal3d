@@ -183,6 +183,25 @@ def install_build(version, dry_run):
     return subprocess.call(cmd) == 0
 
 
+INVENTORY = ("import torch\n"
+             "n = torch.cuda.device_count()\n"
+             "print('devices:', n)\n"
+             "for i in range(n):\n"
+             "    p = torch.cuda.get_device_properties(i)\n"
+             "    print('  [%d] %s  %s  %.1f GB' % (i, p.name,\n"
+             "          getattr(p, 'gcnArchName', '?'), p.total_memory / 2**30))\n")
+
+
+def inventory(timeout):
+    """List what the runtime can see, once something enumerates at all."""
+    code, out, _ = run_case(INVENTORY, {}, timeout)
+    if code != 0 or not out.strip():
+        return
+    print("    devices the runtime reports:")
+    for line in out.splitlines():
+        print(f"      {line}")
+
+
 def try_all(label, timeout):
     """Baseline, then the sweep. Returns the winning overrides or None."""
     ok, summary, detail = works({}, timeout)
@@ -191,11 +210,15 @@ def try_all(label, timeout):
         return {}
     print(f"    {label}: {summary}")
     show_detail(detail)
+    if 'devices' in summary or 'Image' in (detail or '') or 'image' in (detail or ''):
+        # It enumerated; knowing which GPU it picked is the whole question.
+        inventory(timeout)
     for number, (overrides, name) in enumerate(SWEEP, 1):
         if not overrides:
             continue
-        print(f"      trying {name} ({number}/{len(SWEEP)}) ...")
+        print(f"      {name} ({number}/{len(SWEEP)}) ... ", end="")
         ok, summary, detail = works(overrides, timeout)
+        print("WORKS" if ok else summary)
         if ok:
             print(f"    {label} + {name}: WORKS -- {summary}")
             return overrides

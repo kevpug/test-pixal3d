@@ -335,6 +335,23 @@ have broken whole families
 ([ROCm/TheRock#5543](https://github.com/ROCm/TheRock/issues/5543)). Then
 install the Visual C++ Redistributable, and try a different Adrenalin driver.
 
+**Two AMD adapters (a laptop with an iGPU, or a Ryzen APU plus a card)** — this
+is the most common cause of both enumeration crashes and
+`hipErrorInvalidImage` on this stack. The runtime enumerates every AMD agent,
+the `gfx103X-dgpu` wheels carry no kernels for an integrated part, and it dies
+before your discrete card is used. `HIP_VISIBLE_DEVICES` does not reliably
+help, because the damage is done during enumeration.
+
+Disable the integrated GPU and retry:
+
+> Device Manager > Display adapters > right-click the integrated Radeon >
+> **Disable device**
+
+Reversible, no reboot needed. (Disabling it in the BIOS works too, and is what
+the [ROCm ComfyUI fork](https://github.com/patientx-cfz/comfyui-rocm)
+tells people to do before installing.) `gpu_probe.bat` and `fix_gpu.bat` now
+say when they see more than one AMD adapter.
+
 **If ComfyUI or another app already drives this GPU but Pixal3D cannot**, the
 hardware and driver are fine and the difference is the stack. On Windows AMD
 there are three, and they are not interchangeable:

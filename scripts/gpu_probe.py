@@ -196,6 +196,7 @@ def sweep(timeout: int) -> int:
 
 def report_environment() -> None:
     """Driver versions and installed ROCm wheels -- the two usual culprits."""
+    amd_adapters = []
     print("Display adapters (from the driver registry)")
     print("-" * 42)
     try:
@@ -216,12 +217,32 @@ def report_environment() -> None:
                         desc = winreg.QueryValueEx(adapter, "DriverDesc")[0]
                         version = winreg.QueryValueEx(adapter, "DriverVersion")[0]
                         print(f"  {desc}  driver {version}")
+                        if any(k in desc.lower() for k in ('amd', 'radeon')):
+                            amd_adapters.append((desc, version))
                 except OSError:
                     continue
     except ImportError:
         print("  (not Windows)")
     except Exception as exc:
         print(f"  could not read: {type(exc).__name__}: {exc}")
+
+    # An integrated Radeon alongside a discrete one is a known breaker: the
+    # runtime enumerates both, the gfx10 3X-dgpu wheels carry no kernels for
+    # the integrated part, and it fails before the discrete card is ever used.
+    # HIP_VISIBLE_DEVICES does not reliably help, because the damage is done
+    # during enumeration. The ROCm ComfyUI fork tells people to disable the
+    # iGPU outright for this reason.
+    if len(amd_adapters) > 1:
+        integrated = [d for d, _ in amd_adapters
+                      if 'rx' not in d.lower() and 'pro w' not in d.lower()]
+        print()
+        print(f"  !! {len(amd_adapters)} AMD adapters. This is the most common cause of")
+        print("     enumeration crashes and hipErrorInvalidImage on laptops.")
+        if integrated:
+            print(f"     The integrated one looks like: {integrated[0]}")
+        print("     Disable it and retry -- Device Manager > Display adapters >")
+        print("     right-click it > Disable device. Reversible, no reboot needed.")
+        print("     (BIOS works too, and is what the ROCm ComfyUI fork recommends.)")
     print()
 
     # An access violation inside hipGetDeviceCount is usually a version
