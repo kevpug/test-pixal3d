@@ -170,6 +170,7 @@ def check_backends():
         ('cumesh', 'GPU mesh cleanup, remeshing and UV unwrap'),
         ('o_voxel', 'GPU mesh extraction and GLB export'),
         ('nvdiffrast', 'GPU texture baking'),
+        ('natten', 'faster NAF feature upsampling'),
     ):
         if info[name]:
             print(f"{OK} {name} available ({why})")

@@ -785,6 +785,124 @@ def test_rembg(device):
           f"size {masked.size}")
 
 
+# ----------------------------------------------------------------- natten --
+
+def _natten_window(index, length, kernel, dilation):
+    """NATTEN's neighbourhood rule, restated literally as a reference.
+
+    Deliberately written with Python lists rather than tensor arithmetic so it
+    shares no logic with the implementation under test.
+    """
+    offset = index % dilation
+    subsequence = list(range(offset, length, dilation))
+    position = subsequence.index(index)
+    start = max(0, min(position - kernel // 2, len(subsequence) - kernel))
+    return [subsequence[min(start + t, len(subsequence) - 1)] for t in range(kernel)]
+
+
+def _natten_reference(q, k, v, kernel, dilation):
+    """Brute-force neighbourhood attention, one query position at a time."""
+    batch, height, width, heads, dim = q.shape
+    kh, kw = kernel
+    dh, dw = dilation
+    scale = dim ** -0.5
+    out = torch.zeros_like(q)
+    for i in range(height):
+        rows = _natten_window(i, height, kh, dh)
+        for j in range(width):
+            cols = _natten_window(j, width, kw, dw)
+            taps = [(r, c) for r in rows for c in cols]
+            keys = torch.stack([k[:, r, c] for r, c in taps], dim=2)
+            values = torch.stack([v[:, r, c] for r, c in taps], dim=2)
+            scores = (q[:, i, j].unsqueeze(2) * keys).sum(-1) * scale
+            out[:, i, j] = (scores.softmax(-1).unsqueeze(-1) * values).sum(2)
+    return out
+
+
+def test_natten(device):
+    """NAF's neighbourhood attention, which needs Linux/CUDA-only NATTEN.
+
+    The border rule is the part worth testing: NATTEN keeps every window
+    exactly kernel_size wide by sliding it inward, so a corner query attends
+    to as many keys as a centre one. Zero-padding instead would look right on
+    the interior and be wrong all around the edge.
+    """
+    section("Neighbourhood attention (natten fallback)")
+
+    from pixal3d.compat import natten as natten_compat
+    from pixal3d.compat.natten import na2d, na2d_qk, na2d_av, neighborhood_indices
+
+    torch.manual_seed(0)
+    cases = [(8, 8, 3, 3, 1, 1), (8, 8, 5, 5, 1, 1), (12, 12, 3, 3, 2, 2),
+             (16, 16, 9, 9, 1, 1), (12, 10, 3, 5, 2, 1), (7, 9, 3, 3, 2, 3),
+             (5, 5, 5, 5, 1, 1)]
+    for height, width, kh, kw, dh, dw in cases:
+        shape = (2, height, width, 3, 8)
+        # float64 on the CPU: the reference sums in a different order, so a
+        # float32 comparison would measure rounding rather than correctness.
+        q, k, v = (torch.randn(shape, dtype=torch.float64) for _ in range(3))
+        want = _natten_reference(q, k, v, (kh, kw), (dh, dw))
+        got = na2d(q, k, v, kernel_size=(kh, kw), dilation=(dh, dw),
+                   backend="cutlass-fna")
+        error = (want - got).abs().max().item()
+        check(f"na2d {height}x{width} kernel {kh}x{kw} dilation {dh}x{dw}",
+              error < 1e-10, f"max err {error:.1e}")
+
+    for length, kernel, dilation in [(8, 3, 1), (12, 5, 2), (16, 9, 1), (7, 3, 2)]:
+        index = neighborhood_indices(length, kernel, dilation)
+        distinct = all(len(set(index[i].tolist())) == kernel for i in range(length))
+        check(f"every window is {kernel} wide and in range (L={length}, d={dilation})",
+              tuple(index.shape) == (length, kernel) and index.min() >= 0
+              and index.max() < length and distinct)
+
+    # The legacy two-call API and the modern fused one must agree, since which
+    # of them NAF uses depends on the NATTEN version it thinks it has.
+    shape = (2, 10, 10, 3, 8)
+    q, k, v = (torch.randn(shape, dtype=torch.float64) for _ in range(3))
+    heads_first = [t.permute(0, 3, 1, 2, 4) for t in (q, k, v)]
+    scores = na2d_qk(heads_first[0], heads_first[1],
+                     kernel_size=(5, 5), dilation=(2, 2)) * (8 ** -0.5)
+    legacy = na2d_av(scores.softmax(-1), heads_first[2],
+                     kernel_size=(5, 5), dilation=(2, 2)).permute(0, 2, 3, 1, 4)
+    modern = na2d(q, k, v, kernel_size=(5, 5), dilation=(2, 2))
+    error = (legacy - modern).abs().max().item()
+    check("legacy na2d_qk + na2d_av matches modern na2d", error < 1e-10,
+          f"max err {error:.1e}")
+
+    # Row chunking is a memory optimisation and must be invisible.
+    q = torch.randn(1, 16, 16, 2, 8, dtype=torch.float64)
+    whole = na2d(q, q, q, kernel_size=(5, 5), dilation=(1, 1))
+    budget = natten_compat._CHUNK_BUDGET
+    try:
+        natten_compat._CHUNK_BUDGET = 1
+        chunked = na2d(q, q, q, kernel_size=(5, 5), dilation=(1, 1))
+    finally:
+        natten_compat._CHUNK_BUDGET = budget
+    check("chunking does not change the result",
+          torch.equal(whole, chunked))
+
+    # It must run in the run's real dtype and device, not only float64 on CPU.
+    q = torch.randn(1, 12, 12, 4, 16, device=device, dtype=torch.float32)
+    out = na2d(q, q, q, kernel_size=(9, 9), dilation=(1, 1))
+    check("runs on the target device in float32",
+          out.shape == q.shape and torch.isfinite(out).all(),
+          f"{device}, {tuple(out.shape)}")
+
+    check("stride > 1 is refused rather than silently wrong",
+          _raises(lambda: na2d(q, q, q, kernel_size=(3, 3), stride=2),
+                  NotImplementedError))
+
+
+def _raises(call, exception):
+    try:
+        call()
+    except exception:
+        return True
+    except Exception:
+        return False
+    return False
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--device', default=None, help="cuda or cpu (default: cuda when available)")
@@ -797,7 +915,8 @@ def main():
 
     for test in (test_hashgrid, test_grid_sample, test_uv_rasterize, test_dual_grid,
                  test_attention, test_sparse_conv, test_runtime, test_cfg_batch,
-                 test_accelerator_probe, test_fast_init, test_rembg, test_model_stack,
+                 test_accelerator_probe, test_fast_init, test_rembg, test_natten,
+                 test_model_stack,
                  test_glb_export):
         test(device)
 

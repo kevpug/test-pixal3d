@@ -3,9 +3,10 @@ Portable fallbacks for Pixal3D's CUDA-only dependencies.
 
 Pixal3D inherits TRELLIS.2's native stack — ``flash_attn``, ``flex_gemm``,
 ``cumesh``, ``o_voxel``, ``nvdiffrast`` — none of which builds on Windows with
-ROCm. Everything in this package is a pure-PyTorch (or trimesh/xatlas)
-implementation of one of those pieces, chosen automatically when the fast path
-is missing and never used when it is present.
+ROCm, and NAF's ``natten``, which is Linux/CUDA-only. Everything in this
+package is a pure-PyTorch (or trimesh/xatlas) implementation of one of those
+pieces, chosen automatically when the fast path is missing and never used when
+it is present.
 
 Nothing here changes behaviour on a working CUDA install: the native extension
 always wins if it imports.
@@ -31,7 +32,7 @@ __attributes = {
 }
 
 __submodules = ['probe', 'hashgrid', 'grid_sample', 'dual_grid', 'uv_raster',
-                'mesh_ops', 'postprocess', 'dispatch']
+                'mesh_ops', 'postprocess', 'dispatch', 'natten']
 
 __all__ = list(__attributes.keys()) + __submodules
 

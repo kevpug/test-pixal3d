@@ -472,6 +472,11 @@ def _shared_naf(device) -> nn.Module:
         return _NAF_CACHE[0].to(device)
 
     import torch.hub
+    # NAF's cross-attention imports NATTEN, which is Linux/CUDA-only -- no
+    # Windows build and no ROCm backend. Register the pure-PyTorch equivalent
+    # before the hub code is imported; a real NATTEN, if present, still wins.
+    from ....compat.natten import install as install_natten
+    install_natten()
     model = torch.hub.load("valeoai/NAF", "naf", pretrained=True, device=device, trust_repo=True)
     model.eval()
     model.requires_grad_(False)

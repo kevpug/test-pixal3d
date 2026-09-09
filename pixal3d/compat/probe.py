@@ -209,6 +209,6 @@ def summary() -> Dict[str, Any]:
     }
     for name in ('torch', 'flash_attn', 'xformers', 'flex_gemm', 'cumesh',
                  'o_voxel', 'nvdiffrast', 'nvdiffrec_render', 'triton',
-                 'xatlas', 'fast_simplification', 'trimesh'):
+                 'natten', 'xatlas', 'fast_simplification', 'trimesh'):
         info[name] = has_module(name)
     return info
