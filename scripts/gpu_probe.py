@@ -24,6 +24,10 @@ import os
 import subprocess
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from _report import tee_to  # noqa: E402
+
 
 # Windows NTSTATUS values, as returned to the shell (negative on POSIX-style
 # reporting, the unsigned form is what cmd's ERRORLEVEL shows).
@@ -285,6 +289,7 @@ def main():
                              "HIP runtime survives enumeration, and report which work.")
     args = parser.parse_args()
 
+    tee_to(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "gpu_probe_report.txt"))
     print("Pixal3D GPU probe")
     print("=" * 17)
     if args.sweep:

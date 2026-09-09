@@ -32,6 +32,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from gpu_probe import SWEEP, SWEEP_KEYS, describe_exit, run_case  # noqa: E402
+from _report import elapsed, tee_to  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ENV_FILE = os.path.join(ROOT, 'pixal3d_env.bat')
@@ -45,7 +46,7 @@ WORK_SRC = ("import torch; p = torch.cuda.get_device_properties(0);"
 
 def step(text):
     print()
-    print("==> " + text)
+    print(f"[{elapsed()}] ==> {text}")
 
 
 def works(overrides, timeout=180):
@@ -160,6 +161,9 @@ def install_build(version, dry_run):
     if dry_run:
         print("    would run: " + " ".join(cmd))
         return True
+    print("    downloading and installing -- this is several GB and takes a")
+    print("    while. pip's progress follows; the window is not frozen.")
+    sys.stdout.flush()
     return subprocess.call(cmd) == 0
 
 
@@ -170,9 +174,10 @@ def try_all(label, timeout):
         print(f"    {label}: WORKS -- {detail}")
         return {}
     print(f"    {label}: {detail}")
-    for overrides, name in SWEEP:
+    for number, (overrides, name) in enumerate(SWEEP, 1):
         if not overrides:
             continue
+        print(f"      trying {name} ({number}/{len(SWEEP)}) ...")
         ok, detail = works(overrides, timeout)
         if ok:
             print(f"    {label} + {name}: WORKS -- {detail}")
@@ -192,8 +197,11 @@ def main():
     parser.add_argument('--skip-vcredist', action='store_true')
     args = parser.parse_args()
 
+    tee_to(os.path.join(ROOT, 'repair_report.txt'))
     print("Pixal3D ROCm repair")
     print("=" * 19)
+    print("Each step is tested before moving on. Steps 4 and 5 download several")
+    print("GB each. Everything here is also saved to repair_report.txt.")
     print(f"python: {sys.executable}")
     # Inherited variables would make every result a lie about the baseline.
     for key in SWEEP_KEYS:

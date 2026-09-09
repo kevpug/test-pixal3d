@@ -23,9 +23,9 @@ if not exist ".venv\Scripts\python.exe" (
     pause
     exit /b 1
 )
-".venv\Scripts\python.exe" scripts\repair_rocm.py %* > "%~dp0repair_report.txt" 2>&1
+REM No redirect: the script tees itself, so a long download stays visible.
+".venv\Scripts\python.exe" -u scripts\repair_rocm.py %*
 set RESULT=%ERRORLEVEL%
-type "%~dp0repair_report.txt"
 echo.
 echo ---------------------------------------------------------------
 echo   Saved to: %~dp0repair_report.txt

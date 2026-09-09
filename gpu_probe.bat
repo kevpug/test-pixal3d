@@ -10,9 +10,8 @@ if not exist ".venv\Scripts\python.exe" (
     pause
     exit /b 1
 )
-".venv\Scripts\python.exe" scripts\gpu_probe.py %* > "%~dp0gpu_probe_report.txt" 2>&1
+".venv\Scripts\python.exe" -u scripts\gpu_probe.py %*
 set RESULT=%ERRORLEVEL%
-type "%~dp0gpu_probe_report.txt"
 echo.
 echo   Saved to: %~dp0gpu_probe_report.txt
 echo   For the HIP runtime's own log:  gpu_probe.bat --verbose

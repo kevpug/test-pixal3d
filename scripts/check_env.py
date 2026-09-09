@@ -20,6 +20,8 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+from _report import tee_to  # noqa: E402
+
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -325,6 +327,7 @@ def main():
     parser.add_argument("--no-gpu-test", action="store_true", help="Skip the device self-test")
     args = parser.parse_args()
 
+    tee_to(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "check_env_report.txt"))
     print(f"Pixal3D environment check - {platform.platform()}")
     print(f"Python {sys.version.split()[0]} at {sys.executable}")
 

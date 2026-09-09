@@ -11,9 +11,8 @@ if not exist ".venv\Scripts\python.exe" (
 )
 REM Saved to a file as well as shown: the interesting part is near the top
 REM and a console window scrolls it away.
-".venv\Scripts\python.exe" scripts\check_env.py > "%~dp0check_env_report.txt" 2>&1
+".venv\Scripts\python.exe" -u scripts\check_env.py
 set RESULT=%ERRORLEVEL%
-type "%~dp0check_env_report.txt"
 echo.
 echo ---------------------------------------------------------------
 echo   Full report saved to:
