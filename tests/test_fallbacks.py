@@ -697,6 +697,94 @@ def test_fast_init(device):
               bool(partial.lin.bias.isfinite().all()))
 
 
+# ------------------------------------------------------------------ rembg --
+
+def test_rembg(device):
+    """The background remover must survive a gated model repo.
+
+    The pipeline config names briaai/RMBG-2.0, which is gated: without a
+    Hugging Face licence acceptance it 401s and used to take the whole run
+    down at load time, even for images that already carry an alpha channel
+    and never need it.
+    """
+    section("Background removal (gated-repo fallback)")
+
+    import types
+    if 'transformers' not in sys.modules:
+        try:
+            import transformers  # noqa: F401
+        except ImportError:
+            stub = types.ModuleType('transformers')
+            stub.AutoModelForImageSegmentation = object
+            sys.modules['transformers'] = stub
+
+    from pixal3d.pipelines.rembg.BiRefNet import (
+        BiRefNet, FALLBACK_MODEL, _is_access_error)
+
+    gated = OSError("You are trying to access a gated repo.\n401 Client Error. "
+                    "Access to model briaai/RMBG-2.0 is restricted.")
+    check("recognises a gated-repo error", _is_access_error(gated))
+    check("ignores an unrelated error",
+          not _is_access_error(RuntimeError("CUDA out of memory")))
+
+    loaded = []
+
+    class Probe(BiRefNet):
+        @staticmethod
+        def _from_pretrained(model_name):
+            loaded.append(model_name)
+            if model_name == "briaai/RMBG-2.0":
+                raise gated
+            module = torch.nn.Linear(2, 2)
+            return module
+
+    remover = Probe("briaai/RMBG-2.0")
+    check("construction loads nothing", loaded == [],
+          "an alpha image should not cost a download")
+
+    remover.to(device)
+    check("to() before load is remembered", loaded == [] and
+          torch.device(device).type == remover.device.type)
+
+    remover._load()
+    check("gated model falls back to the ungated one",
+          loaded == ["briaai/RMBG-2.0", FALLBACK_MODEL],
+          f"now {remover.model_name}")
+    check("the loaded model lands on the requested device",
+          remover.device.type == torch.device(device).type)
+
+    class Broken(BiRefNet):
+        @staticmethod
+        def _from_pretrained(model_name):
+            raise RuntimeError("checkpoint is corrupt")
+
+    try:
+        Broken("briaai/RMBG-2.0")._load()
+        check("a genuine load failure still raises", False)
+    except RuntimeError as error:
+        check("a genuine load failure still raises", "corrupt" in str(error))
+
+    os.environ['PIXAL3D_REMBG_MODEL'] = 'someone/else'
+    try:
+        check("PIXAL3D_REMBG_MODEL overrides the config",
+              BiRefNet("briaai/RMBG-2.0").model_name == 'someone/else')
+    finally:
+        del os.environ['PIXAL3D_REMBG_MODEL']
+
+    class Segmenter(BiRefNet):
+        @staticmethod
+        def _from_pretrained(model_name):
+            class Model(torch.nn.Module):
+                def forward(self, x):
+                    return [torch.zeros(1, 1, 1024, 1024)]
+            return Model()
+
+    from PIL import Image
+    masked = Segmenter(FALLBACK_MODEL)(Image.new('RGB', (64, 48), 'red'))
+    check("still produces an RGBA image", masked.mode == 'RGBA',
+          f"size {masked.size}")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--device', default=None, help="cuda or cpu (default: cuda when available)")
@@ -709,7 +797,7 @@ def main():
 
     for test in (test_hashgrid, test_grid_sample, test_uv_rasterize, test_dual_grid,
                  test_attention, test_sparse_conv, test_runtime, test_cfg_batch,
-                 test_accelerator_probe, test_fast_init, test_model_stack,
+                 test_accelerator_probe, test_fast_init, test_rembg, test_model_stack,
                  test_glb_export):
         test(device)
 

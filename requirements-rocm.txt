@@ -16,6 +16,9 @@ diffusers==0.37.1
 accelerate==1.13.0
 safetensors
 huggingface_hub
+# Xet-backed repos (the Pixal3D weights among them) fall back to plain
+# HTTP without this, which is markedly slower over ~20 GB of weights.
+hf_xet
 timm==1.0.22
 kornia==0.8.2
 einops
