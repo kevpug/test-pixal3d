@@ -171,7 +171,12 @@ def candidate_builds(limit, exclude=()):
     return versions[:limit]
 
 
-def install_build(version, dry_run):
+def install_build(version, dry_run, overrides=None):
+    """
+    Install one build. `overrides` is applied to the installer's environment
+    too -- pip itself never touches the GPU, but the installer probes the
+    adapter list to pick a family, and it costs nothing to be consistent.
+    """
     cmd = [sys.executable, os.path.join(ROOT, 'scripts', 'install_rocm_torch.py'),
            '--rocm-version', version]
     if dry_run:
@@ -180,7 +185,9 @@ def install_build(version, dry_run):
     print("    downloading and installing -- this is several GB and takes a")
     print("    while. pip's progress follows; the window is not frozen.")
     sys.stdout.flush()
-    return subprocess.call(cmd) == 0
+    env = {k: v for k, v in os.environ.items() if k not in SWEEP_KEYS}
+    env.update(overrides or {})
+    return subprocess.call(cmd, env=env) == 0
 
 
 INVENTORY = ("import torch\n"
@@ -202,6 +209,50 @@ def inventory(timeout):
         print(f"      {line}")
 
 
+INTEGRATED_HINTS = ('graphics', 'vega', '680m', '780m', '660m', '760m', 'raphael',
+                    'rembrandt', 'cezanne', 'phoenix', 'radeon(tm) graphics')
+
+
+def discrete_index(timeout):
+    """
+    Which device index is the discrete card, if the runtime can enumerate.
+
+    Guessing 0 and 1 is fine for two GPUs but says nothing about which is
+    which, and on a laptop the integrated part is usually first.
+    """
+    code, out, _ = run_case(INVENTORY, {}, timeout)
+    if code != 0 or not out.strip():
+        return None
+    for line in out.splitlines():
+        line = line.strip()
+        if not line.startswith('['):
+            continue
+        try:
+            index = int(line[1:line.index(']')])
+        except Exception:
+            continue
+        name = line[line.index(']') + 1:].lower()
+        if not any(hint in name for hint in INTEGRATED_HINTS):
+            return index
+    return None
+
+
+def targeted(timeout):
+    """Extra sweep entries that pin the discrete card by its real index."""
+    index = discrete_index(timeout)
+    if index is None:
+        return []
+    print(f"    discrete card looks like device {index}; pinning it")
+    return [
+        ({'HIP_VISIBLE_DEVICES': str(index)}, f"pin discrete (HIP={index})"),
+        ({'ROCR_VISIBLE_DEVICES': str(index)}, f"pin discrete (ROCR={index})"),
+        ({'HIP_VISIBLE_DEVICES': str(index),
+          'HSA_OVERRIDE_GFX_VERSION': '10.3.0'}, f"pin discrete + gfx1030"),
+        ({'ROCR_VISIBLE_DEVICES': str(index),
+          'HSA_OVERRIDE_GFX_VERSION': '10.3.0'}, f"pin discrete ROCR + gfx1030"),
+    ]
+
+
 def try_all(label, timeout):
     """Baseline, then the sweep. Returns the winning overrides or None."""
     ok, summary, detail = works({}, timeout)
@@ -213,10 +264,11 @@ def try_all(label, timeout):
     if 'devices' in summary or 'Image' in (detail or '') or 'image' in (detail or ''):
         # It enumerated; knowing which GPU it picked is the whole question.
         inventory(timeout)
-    for number, (overrides, name) in enumerate(SWEEP, 1):
-        if not overrides:
-            continue
-        print(f"      {name} ({number}/{len(SWEEP)}) ... ", end="")
+    # Anything discovered from the live device list is tried first: it is
+    # aimed at this machine rather than being a generic guess.
+    plan = targeted(timeout) + [entry for entry in SWEEP if entry[0]]
+    for number, (overrides, name) in enumerate(plan, 1):
+        print(f"      {name} ({number}/{len(plan)}) ... ", end="")
         ok, summary, detail = works(overrides, timeout)
         print("WORKS" if ok else summary)
         if ok:
