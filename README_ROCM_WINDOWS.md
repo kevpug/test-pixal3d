@@ -302,6 +302,21 @@ wheels do not match the torch wheel's build date. Reinstall with a pinned build:
 .venv\Scripts\python.exe scripts\install_rocm_torch.py --rocm-version 7.13.0a20260421
 ```
 
+**Installed before September 2026, or `ACCESS_VIOLATION` during device
+enumeration** — the installer used to pull from
+`rocm.nightlies.amd.com/v2-staging/<family>/`, whose `gfx103X-dgpu` bundle
+crashes on gfx1031. AMD's current channel is
+`nightly.repo.amd.com/rocm/whl-next/`, which ships a package per gfx
+architecture (`amd-torch-device-gfx1031` and so on) rather than one bundle per
+family. Just reinstall:
+
+```bat
+.venv\Scripts\python.exe scripts\install_rocm_torch.py
+```
+
+`--arch gfx1031` forces a target if detection gets it wrong; `--legacy` goes
+back to the old index.
+
 **`ACCESS_VIOLATION (0xC0000005)` from `gpu_probe.bat`** — the HIP runtime is
 crashing, which happens before any GPU kernel is compiled or launched, so this
 is not a missing-code-object problem. It is a version disagreement between the

@@ -325,7 +325,25 @@ def main():
                 persist(winner)
                 return 0
 
-    step(f"3/5  Reinstalling ROCm (up to {args.deep} build(s), several GB each)")
+    step("3/5  Reinstalling from AMD's current index")
+    print("    The old per-family bundles crash on some targets; AMD's current")
+    print("    channel ships a package per gfx architecture instead.")
+    if not args.dry_run:
+        rc = subprocess.call([sys.executable,
+                              os.path.join(ROOT, 'scripts', 'install_rocm_torch.py')])
+        if rc == 0:
+            winner = try_all("current index", args.timeout)
+            if winner is not None:
+                step("Done")
+                persist(winner)
+                print("Fixed by AMD's current package index.")
+                return 0
+        else:
+            print("    install failed")
+    else:
+        print("    would run: scripts/install_rocm_torch.py")
+
+    step(f"4/5  Falling back through older builds (up to {args.deep}, several GB each)")
     current = installed_build()
     if current:
         print(f"    currently installed: rocm {current} (will not be retried)")

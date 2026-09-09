@@ -17,6 +17,7 @@ Stdlib only: it has to run before anything is installed.
 
 import argparse
 import html
+import os
 import re
 import subprocess
 import sys
@@ -25,6 +26,14 @@ import urllib.request
 from typing import Dict, List, Optional, Tuple
 
 
+# AMD's current channel. One torch wheel plus a per-architecture extra
+# (torch[device-gfx1031]) rather than a per-family bundle, so the exact chip
+# gets its own code objects -- including parts the old "gfx103X-dgpu" bundle
+# covered badly or not at all.
+NEW_INDEX = "https://nightly.repo.amd.com/rocm/whl-next/"
+
+# The previous channel, kept for --legacy. Its gfx103X-dgpu bundle crashes
+# during device enumeration on gfx1031.
 BASE = "https://rocm.nightlies.amd.com/v2-staging"
 
 # GPU family -> the marketing names that map onto it, for --detect.
@@ -128,6 +137,89 @@ def match_version(index: str, package: str, rocm_version: str,
     return None
 
 
+def adapter_names() -> List[str]:
+    """Display adapter names from the driver registry -- no torch needed."""
+    names = []
+    try:
+        import winreg
+    except ImportError:
+        return names
+    key_path = (r"SYSTEM\CurrentControlSet\Control\Class"
+                r"\{4d36e968-e325-11ce-bfc1-08002be10318}")
+    try:
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, key_path) as root:
+            index = 0
+            while True:
+                try:
+                    sub = winreg.EnumKey(root, index)
+                except OSError:
+                    break
+                index += 1
+                if not sub.isdigit():
+                    continue
+                try:
+                    with winreg.OpenKey(root, sub) as adapter:
+                        names.append(winreg.QueryValueEx(adapter, "DriverDesc")[0])
+                except OSError:
+                    continue
+    except Exception:
+        pass
+    return names
+
+
+def detect_arch() -> Optional[str]:
+    """
+    The gfx target to install for: the discrete Radeon if there is one.
+
+    A laptop with an integrated Radeon reports both, and the discrete card is
+    the one worth building for.
+    """
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    try:
+        from pixal3d.compat.probe import arch_from_device_name
+    except Exception:
+        return None
+    integrated_hint = ('graphics', '680m', '780m', '660m', '760m', 'vega')
+    found = []
+    for name in adapter_names():
+        arch = arch_from_device_name(name)
+        if arch:
+            found.append((arch, any(h in name.lower() for h in integrated_hint), name))
+    if not found:
+        return None
+    found.sort(key=lambda row: row[1])        # discrete first
+    arch, _, name = found[0]
+    print(f"gpu    : {name} -> {arch}")
+    return arch
+
+
+def install_new(arch: str, dry_run: bool, audio: bool) -> int:
+    """
+    Install from AMD's current index using the per-architecture extras.
+
+    This is what the maintained Windows ROCm ComfyUI fork does, and it is the
+    difference between a working install and one that access-violates during
+    enumeration.
+    """
+    packages = [f"torch[device-{arch}]", f"torchvision[device-{arch}]"]
+    if audio:
+        packages.append("torchaudio")
+    packages.append("rocm-sdk-devel")
+    cmd = [sys.executable, '-m', 'pip', 'install', '--pre',
+           '--index-url', NEW_INDEX, '--no-warn-script-location', *packages]
+    print(f"index  : {NEW_INDEX}")
+    print(f"arch   : {arch}")
+    print()
+    for name in packages:
+        print(f"  {name}")
+    print()
+    if dry_run:
+        print(' '.join(cmd))
+        return 0
+    print("Installing (this downloads a few GB) ...")
+    return subprocess.call(cmd)
+
+
 def detect_family() -> Optional[str]:
     """Best-effort GPU family from the Windows device name."""
     if not sys.platform.startswith('win'):
@@ -154,7 +246,14 @@ def main() -> int:
     parser.add_argument('--index', default=BASE, help="Nightly index base URL")
     parser.add_argument('--rocm-version', default=None,
                         help="Pin a build, e.g. 7.13.0a20260421. Default: newest available.")
-    parser.add_argument('--list', action='store_true', help="List available builds and exit")
+    parser.add_argument('--list', action='store_true',
+                        help="List available builds on the legacy index and exit")
+    parser.add_argument('--arch', default=None,
+                        help="gfx target to install for, e.g. gfx1031. "
+                             "Default: detected from the discrete adapter.")
+    parser.add_argument('--legacy', action='store_true',
+                        help="Use the old per-family index instead of AMD's current "
+                             "one. The gfx103X-dgpu bundle there crashes on gfx1031.")
     parser.add_argument('--known-good', action='store_true',
                         help="Pin the build reported to work for this family rather than "
                              "the newest. Try this if the newest one crashes.")
@@ -167,6 +266,16 @@ def main() -> int:
     args = parser.parse_args()
 
     cross = args.python_tag is not None or args.platform_tag is not None
+
+    # AMD's current channel first. The old per-family bundles are still
+    # reachable with --legacy, but gfx103X-dgpu crashes on gfx1031.
+    if not args.legacy and not args.list and not cross:
+        arch = args.arch or detect_arch()
+        if arch:
+            return install_new(arch, args.dry_run, args.audio)
+        print("Could not identify the gfx target from the adapter list.")
+        print("Pass it explicitly, e.g. --arch gfx1031, or use --legacy.")
+        return 1
 
     family = args.family or detect_family() or 'gfx103X-dgpu'
     index = f"{args.index}/{family}"
