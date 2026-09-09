@@ -60,34 +60,76 @@ def check_torch():
         for line in textwrap.wrap(note, 68):
             print(f"         {line}")
 
-    if not torch.cuda.is_available():
-        print(f"{BAD} no GPU visible to torch")
+    # Every path below prints a verdict. An earlier version only looped over
+    # device_count(), so a torch that reported is_available() = True with zero
+    # devices said nothing at all about the GPU.
+    try:
+        available = bool(torch.cuda.is_available())
+    except Exception as exc:
+        available = False
+        print(f"{BAD} torch.cuda.is_available() raised: {type(exc).__name__}: {exc}")
+    try:
+        count = int(torch.cuda.device_count())
+    except Exception as exc:
+        count = 0
+        print(f"{BAD} torch.cuda.device_count() raised: {type(exc).__name__}: {exc}")
+
+    if available and count:
+        for i in range(count):
+            try:
+                props = torch.cuda.get_device_properties(i)
+            except Exception as exc:
+                print(f"{BAD} device {i}: properties unreadable "
+                      f"({type(exc).__name__}: {exc})")
+                continue
+            reported = getattr(props, 'gcnArchName', None)
+            arch = probe.gpu_arch() if i == 0 else None
+            arch = reported.split(':')[0] if reported else (arch or f"sm_{props.major}{props.minor}")
+            inferred = "" if reported else "  (inferred from the device name)"
+            print(f"{OK} device {i}: {props.name} [{arch}]{inferred} "
+                  f"{props.total_memory / 1024 ** 3:.1f} GB")
+    else:
+        if available and not count:
+            # HIP loaded but enumerated nothing: usually a gfx target the wheel
+            # carries no code objects for, or a visibility variable hiding it.
+            print(f"{BAD} torch reports a GPU backend but zero devices "
+                  f"(is_available=True, device_count=0)")
+        else:
+            print(f"{BAD} no GPU visible to torch "
+                  f"(is_available={available}, device_count={count})")
+
         if kind == 'directml':
             print("         DirectML works for many image models but not for this one:")
             print("         it is a separate backend, and the sparse ops here need HIP.")
             print("         Make a second venv and run scripts/install_rocm_torch.py.")
         elif platform.system() == 'Windows' and hip:
-            print("         Check that the AMD driver is 26.1.1 or newer and that the")
-            print("         ROCm SDK wheels match the torch wheel's build date:")
-            print("           python scripts\\install_rocm_torch.py --list")
-            print("         If the card is gfx1031/gfx1032 and the wheels only carry")
-            print("         gfx1030 code objects, try:")
-            print("           set HSA_OVERRIDE_GFX_VERSION=10.3.0")
-        return torch
+            print("         Things to try, in order:")
+            print("         1. Driver must be AMD Adrenalin 26.1.1 or newer.")
+            print("         2. If the card is gfx1031/gfx1032 (RX 6700/6800M/6600),")
+            print("            the wheels may only carry gfx1030 code objects:")
+            print("              set HSA_OVERRIDE_GFX_VERSION=10.3.0")
+            print("            Set it in the SAME cmd window, then run:")
+            print("              .venv\\Scripts\\python.exe scripts\\check_env.py")
+            print("            (double-clicking a .bat starts a fresh window that")
+            print("             does not inherit it)")
+            print("         3. Re-check that the SDK and torch wheels share a build date:")
+            print("              .venv\\Scripts\\python.exe scripts\\install_rocm_torch.py --list")
 
-    for i in range(torch.cuda.device_count()):
-        props = torch.cuda.get_device_properties(i)
-        reported = getattr(props, 'gcnArchName', None)
-        arch = probe.gpu_arch() if i == 0 else None
-        arch = reported.split(':')[0] if reported else (arch or f"sm_{props.major}{props.minor}")
-        inferred = "" if reported else "  (inferred from the device name)"
-        print(f"{OK} device {i}: {props.name} [{arch}]{inferred} "
-              f"{props.total_memory / 1024 ** 3:.1f} GB")
-    override = os.environ.get('HSA_OVERRIDE_GFX_VERSION')
-    if override:
-        print(f"{WARN} HSA_OVERRIDE_GFX_VERSION={override} is set - the GPU is being")
-        print("         reported as a different target. Fine if it works, but if you")
-        print("         get wrong results rather than errors, unset it first.")
+    # Raw facts worth having in any bug report, whether or not a device showed up.
+    hidden = {v: os.environ[v] for v in
+              ('HIP_VISIBLE_DEVICES', 'ROCR_VISIBLE_DEVICES', 'CUDA_VISIBLE_DEVICES',
+               'GPU_DEVICE_ORDINAL', 'HSA_OVERRIDE_GFX_VERSION', 'HSA_ENABLE_SDMA')
+              if v in os.environ}
+    if hidden:
+        for name, value in hidden.items():
+            marker = WARN if name != 'HSA_OVERRIDE_GFX_VERSION' else OK
+            print(f"{marker} {name}={value}")
+        if 'HSA_OVERRIDE_GFX_VERSION' in hidden and available and count:
+            print("         The GPU is being reported as a different target. Fine if it")
+            print("         works, but if you get wrong output rather than errors, unset it.")
+    elif not (available and count):
+        print("         (no HIP/ROCR visibility variables are set)")
+
     return torch
 
 
