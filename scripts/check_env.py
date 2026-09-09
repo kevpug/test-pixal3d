@@ -18,6 +18,8 @@ import platform
 import textwrap
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -59,6 +61,25 @@ def check_torch():
     if note:
         for line in textwrap.wrap(note, 68):
             print(f"         {line}")
+
+    # Enumerating devices can kill the process rather than raise: if the HIP
+    # runtime hits an access violation or a missing DLL, Windows terminates the
+    # interpreter and nothing after this point would run or print. So ask a
+    # child process first, and only touch torch.cuda here if it survived.
+    try:
+        from gpu_probe import run_step, describe_exit
+        code, out, err = run_step("import torch; print(torch.cuda.device_count())",
+                                  verbose=False, timeout=180)
+    except Exception:
+        code, out, err = 0, "", ""
+    if code not in (0, None):
+        print(f"{BAD} device enumeration {describe_exit(code)}")
+        print("         torch.cuda crashed the process instead of raising, so")
+        print("         nothing below could have run. Full detail:")
+        print("           python scripts\\gpu_probe.py --verbose")
+        for line in (err or "").splitlines()[-8:]:
+            print(f"         {line}")
+        return torch
 
     # Every path below prints a verdict. An earlier version only looped over
     # device_count(), so a torch that reported is_available() = True with zero

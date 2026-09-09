@@ -84,9 +84,14 @@ DirectML and ROCm can coexist — put this in its own venv, which
 
 ```bat
 check_env.bat      REM torch build, GPU visibility, backends, device self-test
+gpu_probe.bat      REM where the GPU stack dies, if it does
 run_tests.bat      REM checks the fallbacks against independent references
 run_benchmark.bat  REM measures this GPU and says which speed flags to use
 ```
+
+`check_env.bat` and `gpu_probe.bat` each save their full output next to the
+script (`check_env_report.txt`, `gpu_probe_report.txt`), because the
+interesting part is near the top and a console window scrolls it away.
 
 `run_tests.bat` is worth running once. It compares the sparse convolution
 against a dense `F.conv3d`, the volume sampler against a Python reference, and
@@ -289,6 +294,26 @@ wheels do not match the torch wheel's build date. Reinstall with a pinned build:
 .venv\Scripts\python.exe scripts\install_rocm_torch.py --list
 .venv\Scripts\python.exe scripts\install_rocm_torch.py --rocm-version 7.13.0a20260421
 ```
+
+**No output at all about the GPU, and `python -c "import torch;
+print(torch.cuda.device_count())"` prints nothing either** — the process is
+being killed, not failing. If the HIP runtime hits an access violation or a
+missing DLL while enumerating devices, Windows terminates the interpreter:
+there is no exception to catch and nothing on stdout, so any diagnostic that
+touches `torch.cuda` in its own process dies at the same line. Run:
+
+```bat
+gpu_probe.bat
+gpu_probe.bat --verbose      REM adds the HIP runtime's own log
+```
+
+Each step runs in a separate process, so the crash is reported with its
+Windows exit code (`0xC0000005` access violation, `0xC0000135` missing DLL,
+`0xC0000139` wrong DLL version) instead of taking the probe down with it. That
+code is the diagnosis: a missing or mismatched DLL means the ROCm SDK wheels
+and the torch wheel are from different build dates, and an access violation
+usually means the driver does not match the wheels or the GPU's gfx target has
+no code objects in them.
 
 **`no GPU visible to torch` but your other AI apps work** — check which stack
 those apps use. `check_env.bat` prints it. DirectML and ZLUDA installs do not
